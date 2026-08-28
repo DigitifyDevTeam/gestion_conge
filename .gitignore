@@ -1,0 +1,41 @@
+# See https://help.github.com/ignore-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+env/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/client_secret*.json
+backend/.env
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+package-lock.json
+yarn.lock
+
+commit.sh
+
+# OneDrive online-only stubs that Git cannot index locally
+src/assets/images/small-logos/logo-atlassian.svg
+src/assets/images/small-logos/logo-invision.svg
+src/assets/images/small-logos/logo-jira.svg
+src/assets/images/small-logos/logo-slack.svg
+src/assets/images/small-logos/logo-spotify.svg
+src/assets/images/small-logos/logo-xd.svg
