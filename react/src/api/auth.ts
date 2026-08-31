@@ -10,7 +10,7 @@ interface ApiUser {
   id: number | string;
   email: string;
   name: string;
-  role: 'employee' | 'admin';
+  role: 'employee' | 'admin' | 'comptable';
   department?: string;
   position?: string;
   avatar?: string;
@@ -71,10 +71,17 @@ export async function loginRequest(email: string, password: string): Promise<Use
   }
 }
 
-export async function googleLoginRequest(idToken: string): Promise<User> {
-  const data = await apiFetch<TokenResponse & { user: ApiUser }>('/auth/google/', {
+export async function validateActivationTokenRequest(
+  token: string,
+): Promise<{ valid: boolean; email: string; name: string }> {
+  const params = new URLSearchParams({ token });
+  return apiFetch(`/auth/activate/validate/?${params.toString()}`, {}, false);
+}
+
+export async function activateAccountRequest(token: string, password: string): Promise<User> {
+  const data = await apiFetch<TokenResponse & { user: ApiUser }>('/auth/activate/', {
     method: 'POST',
-    body: JSON.stringify({ id_token: idToken }),
+    body: JSON.stringify({ token, password }),
   }, false);
   return applySession(
     { access: data.access, refresh: data.refresh },
@@ -136,6 +143,21 @@ export async function resendCodeRequest(
 
 export async function fetchMe(): Promise<User> {
   const me = await apiFetch<ApiUser>('/auth/me/');
+  const user = mapUser(me);
+  localStorage.setItem('user', JSON.stringify(user));
+  return user;
+}
+
+export async function updateMe(payload: {
+  name?: string;
+  department?: string;
+  position?: string;
+  avatar?: string;
+}): Promise<User> {
+  const me = await apiFetch<ApiUser>('/auth/me/', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
   const user = mapUser(me);
   localStorage.setItem('user', JSON.stringify(user));
   return user;

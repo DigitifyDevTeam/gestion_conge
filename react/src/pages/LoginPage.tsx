@@ -28,7 +28,6 @@ import {
   resetPasswordRequest,
 } from '@/api/auth';
 import { ApiError } from '@/api/client';
-import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 type Mode = 'login' | 'verify' | 'forgot' | 'reset';
 
@@ -63,7 +62,7 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
-  const { login, verifyEmail, loginWithGoogle, isLoading } = useAuth();
+  const { login, verifyEmail, isLoading } = useAuth();
 
   const redirectAfterAuth = () => {
     const stored = localStorage.getItem('user');
@@ -101,24 +100,14 @@ export default function LoginPage() {
       return;
     }
     if (result.needsVerification) {
-      setPendingEmail(result.email || data.email);
-      setMode('verify');
-      setInfo("Votre compte n'est pas encore vérifié. Entrez le code reçu par e-mail.");
+      setError('');
+      setInfo(
+        result.error ||
+          `Votre compte n'est pas encore activé. Consultez l'e-mail envoyé à ${result.email || data.email} et cliquez sur le lien d'activation.`,
+      );
       return;
     }
     setError(result.error || 'Email ou mot de passe incorrect');
-  };
-
-  const onGoogleCredential = async (idToken: string) => {
-    setError('');
-    setBusy(true);
-    const result = await loginWithGoogle(idToken);
-    setBusy(false);
-    if (result.ok) {
-      redirectAfterAuth();
-    } else {
-      setError(result.error || 'Connexion Google impossible.');
-    }
   };
 
   const onVerify = async () => {
@@ -196,7 +185,7 @@ export default function LoginPage() {
           : 'Réinitialiser le mot de passe';
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="login-page min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-8 animate-fade-in">
         <div className="text-center space-y-4">
           <div className="flex justify-center">
@@ -304,24 +293,7 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-3 text-muted-foreground">ou</span>
-                </div>
-              </div>
-
-              <GoogleSignInButton
-                onCredential={onGoogleCredential}
-                onError={setError}
-                disabled={submitting}
-              />
-              <p className="mt-3 text-center text-xs text-muted-foreground">
-                Connexion Google réservée aux e-mails autorisés par un administrateur.
-              </p>
-
+              {import.meta.env.DEV && (
               <div className="mt-6 pt-5 border-t border-border">
                 <p className="text-xs text-muted-foreground mb-3">Comptes de démonstration :</p>
                 <div className="space-y-2 text-xs">
@@ -337,6 +309,7 @@ export default function LoginPage() {
                   </div>
                 </div>
               </div>
+              )}
             </>
           )}
 

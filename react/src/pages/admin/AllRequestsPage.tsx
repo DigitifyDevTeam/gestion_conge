@@ -40,6 +40,7 @@ import {
   formatLeaveDates,
   formatLeaveDuration,
   formatLeaveDurationCompact,
+  formatLeaveDaysNumber,
   halfDayPeriodLabel,
 } from '@/lib/leave';
 import { downloadLeavePlanningExcel } from '@/lib/exportLeavePlanning';
@@ -176,7 +177,7 @@ export default function AllRequestsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Toutes les demandes</h1>
           <p className="text-muted-foreground mt-1">Gérez toutes les demandes de congés</p>
@@ -336,9 +337,7 @@ export default function AllRequestsPage() {
                                 title="Refuser"
                                 aria-label="Refuser"
                                 disabled={isReviewPending}
-                                onClick={() =>
-                                  rejectMutation.mutate({ id: request.id, comment: '' })
-                                }
+                                onClick={() => setSelectedRequest(request)}
                               >
                                 <X className="w-4 h-4" />
                               </Button>
@@ -385,11 +384,23 @@ export default function AllRequestsPage() {
                     {getInitials(selectedRequest.employeeName)}
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="font-semibold text-foreground">{selectedRequest.employeeName}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                    <span className="font-semibold text-foreground">
+                      {selectedRequest.employeeName}
+                    </span>
+                    {selectedRequest.employeeBalance ? (
+                      <span
+                        className="text-sm font-medium tabular-nums text-muted-foreground"
+                        title={`${formatLeaveDaysNumber(selectedRequest.employeeBalance.used)} utilisés / ${formatLeaveDaysNumber(selectedRequest.employeeBalance.total)} attribués · ${formatLeaveDaysNumber(selectedRequest.employeeBalance.remaining)} restants`}
+                      >
+                        {`${formatLeaveDaysNumber(selectedRequest.employeeBalance.used)}/${formatLeaveDaysNumber(selectedRequest.employeeBalance.total)}`}
+                      </span>
+                    ) : null}
+                  </p>
                   <p className="text-sm text-muted-foreground">{typeLabels[selectedRequest.type]}</p>
                 </div>
-                <Badge variant={selectedRequest.status} className="ml-auto">
+                <Badge variant={selectedRequest.status} className="ml-auto shrink-0">
                   {statusLabels[selectedRequest.status]}
                 </Badge>
               </div>
@@ -419,6 +430,12 @@ export default function AllRequestsPage() {
                   <p className="text-sm text-muted-foreground mb-1">Date de soumission</p>
                   <p className="font-medium text-foreground">
                     {format(new Date(selectedRequest.createdAt), 'd MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Mode urgence</p>
+                  <p className="font-medium text-foreground">
+                    {selectedRequest.emergency ? 'Oui' : 'Non'}
                   </p>
                 </div>
               </div>
@@ -460,7 +477,7 @@ export default function AllRequestsPage() {
               {selectedRequest.status === 'pending' && (
                 <div className="space-y-3 pt-4 border-t border-border">
                   <Textarea
-                    placeholder="Ajouter un commentaire (optionnel)..."
+                    placeholder="Raison du refus (obligatoire pour refuser)..."
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     rows={3}
@@ -469,9 +486,18 @@ export default function AllRequestsPage() {
                     <Button
                       variant="destructive"
                       disabled={isReviewPending}
-                      onClick={() =>
-                        rejectMutation.mutate({ id: selectedRequest.id, comment })
-                      }
+                      onClick={() => {
+                        const reason = comment.trim();
+                        if (!reason) {
+                          toast({
+                            title: 'Raison du refus requise',
+                            description: 'Indiquez pourquoi vous refusez cette demande. L’employé la verra.',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        rejectMutation.mutate({ id: selectedRequest.id, comment: reason });
+                      }}
                     >
                       <X className="w-4 h-4 mr-2" />
                       Refuser

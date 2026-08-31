@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, TrendingUp, Calendar, Users, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,32 @@ const typeLabels: Record<Extract<HolidayType, 'annual' | 'unpaid'>, string> = {
   unpaid: 'Congés sans solde',
 };
 
+const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+function buildMonthlyTrend(
+  requests: { createdAt: Date; status: string }[],
+  year: number,
+) {
+  const counts = MONTH_LABELS.map((month) => ({
+    month,
+    requests: 0,
+    approved: 0,
+  }));
+
+  for (const request of requests) {
+    if (request.createdAt.getFullYear() !== year) {
+      continue;
+    }
+    const index = request.createdAt.getMonth();
+    counts[index].requests += 1;
+    if (request.status === 'approved') {
+      counts[index].approved += 1;
+    }
+  }
+
+  return counts;
+}
+
 export default function ReportsPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -42,18 +68,22 @@ export default function ReportsPage() {
   });
 
   const employees = users.filter(u => u.role === 'employee');
+  const yearRequests = useMemo(
+    () => allRequests.filter((request) => request.createdAt.getFullYear() === year),
+    [allRequests, year],
+  );
 
-  const totalRequests = allRequests.length;
-  const approvedRequests = allRequests.filter(r => r.status === 'approved').length;
-  const pendingRequests = allRequests.filter(r => r.status === 'pending').length;
-  const rejectedRequests = allRequests.filter(r => r.status === 'rejected').length;
-  const totalDays = allRequests.reduce((sum, r) => sum + r.days, 0);
+  const totalRequests = yearRequests.length;
+  const approvedRequests = yearRequests.filter(r => r.status === 'approved').length;
+  const pendingRequests = yearRequests.filter(r => r.status === 'pending').length;
+  const rejectedRequests = yearRequests.filter(r => r.status === 'rejected').length;
+  const totalDays = yearRequests.reduce((sum, r) => sum + r.days, 0);
   const avgDaysPerRequest = totalRequests > 0 ? (totalDays / totalRequests).toFixed(1) : '0';
 
   const requestsByType = Object.entries(typeLabels).map(([type, label]) => ({
     type: label,
-    count: allRequests.filter(r => r.type === type).length,
-    days: allRequests.filter(r => r.type === type).reduce((sum, r) => sum + r.days, 0),
+    count: yearRequests.filter(r => r.type === type).length,
+    days: yearRequests.filter(r => r.type === type).reduce((sum, r) => sum + r.days, 0),
   }));
 
   const requestsByStatus = [
@@ -68,7 +98,7 @@ export default function ReportsPage() {
     if (!acc[dept]) {
       acc[dept] = { name: dept, requests: 0, days: 0 };
     }
-    const empRequests = allRequests.filter(r => r.employeeId === emp.id);
+    const empRequests = yearRequests.filter(r => r.employeeId === emp.id);
     acc[dept].requests += empRequests.length;
     acc[dept].days += empRequests.reduce((s, r) => s + r.days, 0);
     return acc;
@@ -76,15 +106,10 @@ export default function ReportsPage() {
 
   const departmentChartData = Object.values(departmentData);
 
-  // Monthly trend (mock data for last 6 months)
-  const monthlyTrend = [
-    { month: 'Juil', requests: 12, approved: 10 },
-    { month: 'Août', requests: 15, approved: 13 },
-    { month: 'Sep', requests: 18, approved: 16 },
-    { month: 'Oct', requests: 14, approved: 12 },
-    { month: 'Nov', requests: 16, approved: 14 },
-    { month: 'Déc', requests: totalRequests, approved: approvedRequests },
-  ];
+  const monthlyTrend = useMemo(
+    () => buildMonthlyTrend(yearRequests, year),
+    [yearRequests, year],
+  );
 
   const handleExport = async () => {
     setExporting(true);
@@ -113,7 +138,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Rapports et analyses</h1>
           <p className="text-muted-foreground mt-1">Statistiques et tendances des congés</p>
@@ -276,7 +301,7 @@ export default function ReportsPage() {
         <Card className="animate-fade-in" style={{ animationDelay: '800ms' }}>
           <CardHeader>
             <CardTitle>Tendance mensuelle</CardTitle>
-            <CardDescription>Évolution des demandes sur 6 mois</CardDescription>
+            <CardDescription>Évolution des demandes sur {year}</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer

@@ -151,7 +151,7 @@ export default function PublicHolidaysPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Jours fériés</h1>
           <p className="text-muted-foreground mt-1">Liste des jours fériés officiels tunisiens pour {currentYear}</p>

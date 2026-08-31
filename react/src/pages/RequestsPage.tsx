@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Filter, MessageSquare, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, Filter, MessageSquare, Pencil, Plus, Trash2, X, Siren } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -42,7 +42,7 @@ import { HolidayRequest, HolidayType } from '@/types/holiday';
 import { toast } from '@/hooks/use-toast';
 import { ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatLeaveDates, formatLeaveDuration } from '@/lib/leave';
+import { formatLeaveDates, formatLeaveDuration, formatLeaveDaysNumber } from '@/lib/leave';
 
 const typeLabels: Record<HolidayType, string> = {
   annual: 'Congés annuels',
@@ -172,7 +172,7 @@ export default function RequestsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Mes demandes</h1>
           <p className="text-muted-foreground mt-1">
@@ -256,7 +256,7 @@ export default function RequestsPage() {
                     <Button
                       variant="destructive"
                       size="icon"
-                      onClick={() => rejectMutation.mutate({ id: request.id, comment })}
+                      onClick={() => setSelectedRequest(request)}
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -368,16 +368,27 @@ export default function RequestsPage() {
                   )}
                 </div>
               </div>
-              {request.reviewedBy && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs text-muted-foreground">
-                    {request.status === 'approved' ? 'Approuvé' : 'Examiné'} par{' '}
-                    <span className="font-medium text-foreground">{request.reviewedBy}</span>{' '}
-                    le{' '}
-                    {format(new Date(request.reviewedAt!), 'd MMM yyyy', { locale: fr })}
-                  </p>
-                </div>
-              )}
+                  {request.reviewedBy && (
+                    <div className="mt-4 flex items-start justify-between gap-4 border-t border-border pt-4">
+                      <p className="text-xs text-muted-foreground">
+                        {request.status === 'approved' ? 'Approuvé' : 'Examiné'} par{' '}
+                        <span className="font-medium text-foreground">{request.reviewedBy}</span>{' '}
+                        le{' '}
+                        {format(new Date(request.reviewedAt!), 'd MMM yyyy', { locale: fr })}
+                      </p>
+                      {request.reviewComment ? (
+                        <p
+                          className={
+                            request.status === 'rejected'
+                              ? 'max-w-[60%] text-right text-sm text-destructive'
+                              : 'max-w-[60%] text-right text-sm text-muted-foreground'
+                          }
+                        >
+                          {request.reviewComment}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
             </div>
           ))}
 
@@ -413,13 +424,13 @@ export default function RequestsPage() {
           <DialogHeader>
             <DialogTitle>Examiner la demande</DialogTitle>
             <DialogDescription>
-              Ajoutez un commentaire avant d'approuver ou de rejeter cette demande
+              Indiquez la raison du refus. L’employé la verra sur sa demande.
             </DialogDescription>
           </DialogHeader>
 
           {selectedRequest && (
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-secondary/50">
+              <div className="p-4 rounded-lg bg-secondary/50 space-y-1">
                 <p className="font-medium text-foreground">{selectedRequest.employeeName}</p>
                 <p className="text-sm text-muted-foreground">
                   {typeLabels[selectedRequest.type]} • {formatLeaveDuration(selectedRequest.days, selectedRequest.halfDayPeriod)}
@@ -427,10 +438,28 @@ export default function RequestsPage() {
                 <p className="text-sm text-muted-foreground">
                   {formatLeaveDates(selectedRequest.dates, true)}
                 </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {selectedRequest.emergency ? (
+                    <Badge variant="destructive" className="gap-1">
+                      <Siren className="h-3 w-3" />
+                      Mode urgence
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">Sans urgence</Badge>
+                  )}
+                  {selectedRequest.employeeBalance ? (
+                    <span className="text-sm text-foreground">
+                      Solde : {formatLeaveDaysNumber(selectedRequest.employeeBalance.remaining)} restants
+                      {selectedRequest.employeeBalance.total > 0
+                        ? ` / ${formatLeaveDaysNumber(selectedRequest.employeeBalance.total)}`
+                        : ''}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <Textarea
-                placeholder="Ajouter un commentaire (optionnel)..."
+                placeholder="Raison du refus (obligatoire pour refuser)..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
@@ -439,9 +468,18 @@ export default function RequestsPage() {
               <div className="flex justify-end gap-3">
                 <Button
                   variant="destructive"
-                  onClick={() =>
-                    rejectMutation.mutate({ id: selectedRequest.id, comment })
-                  }
+                  onClick={() => {
+                    const reason = comment.trim();
+                    if (!reason) {
+                      toast({
+                        title: 'Raison du refus requise',
+                        description: 'Indiquez pourquoi vous refusez cette demande. L’employé la verra.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    rejectMutation.mutate({ id: selectedRequest.id, comment: reason });
+                  }}
                 >
                   <X className="w-4 h-4 mr-2" />
                   Rejeter

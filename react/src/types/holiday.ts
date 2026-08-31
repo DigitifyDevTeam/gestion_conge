@@ -39,6 +39,8 @@ export interface HolidayRequest {
   halfDayPeriod?: HalfDayPeriod | null;
   status: RequestStatus;
   reason?: string;
+  emergency?: boolean;
+  employeeBalance?: HolidayBalance;
   createdAt: Date;
   reviewedBy?: string;
   reviewedAt?: Date;
@@ -54,6 +56,7 @@ export interface TeamMember {
   isOnHoliday: boolean;
   leaveStart?: Date;
   leaveEnd?: Date;
+  leaveDays?: number;
 }
 
 export interface PublicHoliday {

@@ -10,6 +10,7 @@ interface ApiTeamMember {
   is_on_holiday: boolean;
   leave_start?: string | null;
   leave_end?: string | null;
+  leave_days?: number | string | null;
 }
 
 export function mapTeamMember(m: ApiTeamMember): TeamMember {
@@ -22,6 +23,10 @@ export function mapTeamMember(m: ApiTeamMember): TeamMember {
     isOnHoliday: m.is_on_holiday,
     leaveStart: m.leave_start ? parseDate(m.leave_start) : undefined,
     leaveEnd: m.leave_end ? parseDate(m.leave_end) : undefined,
+    leaveDays:
+      m.leave_days === null || m.leave_days === undefined
+        ? undefined
+        : Number(m.leave_days),
   };
 }
 

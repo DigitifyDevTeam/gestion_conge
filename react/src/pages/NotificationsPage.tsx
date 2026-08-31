@@ -1,26 +1,30 @@
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { Check, CheckCheck, Trash2, Bell, ArrowLeft } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, CheckCheck, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   deleteNotification,
   listNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
 } from '@/api/notifications';
 import { toast } from '@/hooks/use-toast';
 import { ApiError } from '@/api/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { NotificationItem } from '@/components/notifications/NotificationItem';
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: listNotifications,
   });
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notifications'] });
 
@@ -44,103 +48,104 @@ export default function NotificationsPage() {
     },
   });
 
+  const openRelatedPage = (id: string, isRead: boolean) => {
+    if (!isRead) {
+      markReadMutation.mutate(id);
+    }
+    navigate(isAdmin() ? '/admin/requests' : '/requests');
+  };
+
   const markAllRead = async () => {
-    await Promise.all(
-      notifications.filter(n => !n.read).map(n => markNotificationRead(n.id, true)),
-    );
+    await markAllNotificationsRead();
     invalidate();
   };
 
+  const goBack = () => {
+    navigate(isAdmin() ? '/admin' : '/');
+  };
+
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="flex items-center justify-between animate-fade-in">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
-          <p className="text-muted-foreground mt-1">Restez informé de vos demandes et de l'activité de l'équipe</p>
+    <div className="space-y-6">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={goBack} aria-label="Retour">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+            <p className="mt-1 text-muted-foreground">
+              Toutes vos notifications de demandes et d&apos;activité
+            </p>
+          </div>
         </div>
         {unreadCount > 0 && (
           <Button variant="outline" size="sm" onClick={markAllRead}>
-            <CheckCheck className="w-4 h-4 mr-2" />
+            <CheckCheck className="mr-2 h-4 w-4" />
             Tout marquer comme lu
           </Button>
         )}
       </div>
 
       {unreadCount > 0 && (
-        <div className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: '100ms' }}>
-          <Badge variant="default">{unreadCount} non lu{unreadCount > 1 ? 's' : ''}</Badge>
+        <div className="animate-fade-in" style={{ animationDelay: '100ms' }}>
+          <Badge variant="default">
+            {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
+          </Badge>
         </div>
       )}
 
-      <div className="space-y-3">
-        {notifications.map((notification, index) => (
-          <div
-            key={notification.id}
-            className={cn(
-              "bg-card rounded-xl border border-border p-5 shadow-card hover:shadow-card-hover transition-all duration-300 animate-fade-in",
-              !notification.read && "border-l-4 border-l-primary"
-            )}
-            style={{ animationDelay: `${(index + 2) * 100}ms` }}
-          >
-            <div className="flex items-start gap-4">
-              <div className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-                notification.type === 'success' && "bg-success/10",
-                notification.type === 'info' && "bg-primary/10",
-                notification.type === 'reminder' && "bg-warning/10"
-              )}>
-                <Bell className={cn(
-                  "w-5 h-5",
-                  notification.type === 'success' && "text-success",
-                  notification.type === 'info' && "text-primary",
-                  notification.type === 'reminder' && "text-warning"
-                )} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-foreground">{notification.title}</h3>
-                  {!notification.read && (
-                    <span className="w-2 h-2 rounded-full bg-primary" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">{notification.message}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {format(notification.timestamp, "d MMM yyyy 'à' HH:mm", { locale: fr })}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1">
-                {!notification.read && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8"
-                    onClick={() => markReadMutation.mutate(notification.id)}
-                  >
-                    <Check className="w-4 h-4" />
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteMutation.mutate(notification.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {notifications.length === 0 && (
-          <div className="text-center py-12 bg-card rounded-xl border border-border animate-fade-in">
-            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Bell className="w-6 h-6 text-muted-foreground" />
+      <div className="animate-fade-in" style={{ animationDelay: '150ms' }}>
+        {notifications.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card py-16 text-center shadow-card">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Bell className="h-6 w-6 text-muted-foreground" />
             </div>
             <p className="text-lg font-medium text-foreground">Aucune notification</p>
-            <p className="text-muted-foreground mt-1">Vous êtes à jour !</p>
+            <p className="mt-1 text-muted-foreground">Vous êtes à jour !</p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+            <ul className="divide-y divide-border">
+              {notifications.map((notification, index) => (
+                <li
+                  key={notification.id}
+                  className={cn(
+                    'flex items-start animate-fade-in',
+                    !notification.read && 'border-l-4 border-l-primary',
+                  )}
+                  style={{ animationDelay: `${(index + 2) * 50}ms` }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <NotificationItem
+                      notification={notification}
+                      onClick={() => openRelatedPage(notification.id, notification.read)}
+                    />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1 py-3 pr-3">
+                    {!notification.read && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Marquer comme lu"
+                        onClick={() => markReadMutation.mutate(notification.id)}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      aria-label="Supprimer la notification"
+                      onClick={() => deleteMutation.mutate(notification.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>

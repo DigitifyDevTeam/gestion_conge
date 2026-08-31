@@ -1,10 +1,12 @@
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from .email_notifications import send_admin_alert_email
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
     HalfDayPeriod,
@@ -18,11 +20,132 @@ from .models import (
     PRESET_LEAVE_REASONS,
     PublicHoliday,
     RequestStatus,
+    UserRole,
 )
 
 REQUESTABLE_LEAVE_TYPES = {LeaveType.ANNUAL, LeaveType.UNPAID}
 MIN_LEAVE_DAYS = Decimal('0.5')
 HALF_DAY = Decimal('0.5')
+MIN_LEAVE_NOTICE_DAYS = 5
+
+STATUS_FR = {
+    RequestStatus.PENDING: 'En attente',
+    RequestStatus.APPROVED: 'Approuvée',
+    RequestStatus.REJECTED: 'Refusée',
+}
+
+ROLE_FR = {
+    UserRole.EMPLOYEE: 'Employé',
+    UserRole.ADMIN: 'Administrateur',
+    UserRole.COMPTABLE: 'Comptable',
+}
+
+LEAVE_TYPE_FR = {
+    LeaveType.ANNUAL: 'congés annuels',
+    LeaveType.UNPAID: 'congés sans solde',
+    LeaveType.SICK: 'congés maladie',
+    LeaveType.PERSONAL: 'jour personnel',
+}
+
+
+def _person_name(user):
+    full = (user.get_full_name() or '').strip()
+    return full or user.username
+
+
+def _leave_type_label(leave_type):
+    return LEAVE_TYPE_FR.get(leave_type, leave_type)
+
+
+def _days_label(value):
+    number = Decimal(value)
+    if number == number.to_integral_value():
+        text = str(int(number))
+    else:
+        text = format(number, 'f').rstrip('0').rstrip('.').replace('.', ',')
+    unit = 'jour' if number == 1 else 'jours'
+    return f'{text} {unit}'
+
+
+def notify_user(user, title, message, ntype=NotificationType.INFO):
+    Notification.objects.create(
+        user=user,
+        title=title,
+        message=message,
+        type=ntype,
+    )
+
+
+def _format_date(value):
+    return value.strftime('%d/%m/%Y')
+
+
+def _leave_request_details(request: LeaveRequest) -> list[tuple[str, str]]:
+    dates = request.dates
+    if dates:
+        if len(dates) == 1:
+            dates_label = _format_date(dates[0])
+        elif len(dates) <= 4:
+            dates_label = ', '.join(_format_date(day) for day in dates)
+        else:
+            dates_label = (
+                f'{_format_date(dates[0])} → {_format_date(dates[-1])} '
+                f'({len(dates)} jours)'
+            )
+    else:
+        dates_label = f'{_format_date(request.start_date)} → {_format_date(request.end_date)}'
+
+    details = [
+        ('Employé', _person_name(request.employee)),
+        ('Type', _leave_type_label(request.type)),
+        ('Durée', _days_label(request.days)),
+        ('Dates', dates_label),
+        ('Raison', request.reason or '—'),
+        ('Statut', STATUS_FR.get(request.status, request.status)),
+    ]
+    if request.emergency:
+        details.append(('Mode urgence', 'Oui'))
+    return details
+
+
+def notify_admins(
+    title,
+    message,
+    ntype=NotificationType.INFO,
+    exclude_user=None,
+    *,
+    email_action=None,
+    email_category=None,
+    email_actor=None,
+    email_details=None,
+    email_cta_path='/admin/requests',
+    email_subject=None,
+):
+    admins = User.objects.filter(
+        is_active=True,
+        profile__role=UserRole.ADMIN,
+    )
+    if exclude_user is not None:
+        admins = admins.exclude(pk=exclude_user.pk)
+    Notification.objects.bulk_create(
+        [
+            Notification(user=admin, title=title, message=message, type=ntype)
+            for admin in admins
+        ]
+    )
+    if email_action and email_category:
+        actor_name = _person_name(email_actor) if email_actor else ''
+        send_admin_alert_email(
+            subject=email_subject or f'HolidayHub — {title}',
+            title=title,
+            message=message,
+            action=email_action,
+            category=email_category,
+            actor_name=actor_name,
+            details=email_details,
+            cta_path=email_cta_path,
+            exclude_user=exclude_user,
+        )
 
 
 def get_or_create_balance(user, leave_type):
@@ -139,7 +262,7 @@ def _normalize_period(value):
     return period
 
 
-def _validate_leave_dates(entries):
+def _validate_leave_dates(entries, *, emergency=False):
     if not entries:
         raise ValidationError({'dates': 'Sélectionnez au moins une journée.'})
 
@@ -159,6 +282,20 @@ def _validate_leave_dates(entries):
         raise ValidationError(
             {'dates': 'Les jours sélectionnés doivent être aujourd’hui ou dans le futur.'}
         )
+
+    if not emergency:
+        min_date = today + timedelta(days=MIN_LEAVE_NOTICE_DAYS)
+        too_soon = [item['date'] for item in normalized if item['date'] < min_date]
+        if too_soon:
+            raise ValidationError(
+                {
+                    'dates': (
+                        f'Un préavis de {MIN_LEAVE_NOTICE_DAYS} jours est requis '
+                        f'(à partir du {min_date}). '
+                        'Activez le mode urgence pour demander un congé immédiat.'
+                    )
+                }
+            )
 
     holidays = _holiday_dates(normalized[0]['date'], normalized[-1]['date'])
     invalid = [
@@ -214,6 +351,7 @@ def create_leave_request(
     leave_type,
     dates,
     reason='',
+    emergency=False,
 ):
     if leave_type not in REQUESTABLE_LEAVE_TYPES:
         raise ValidationError(
@@ -222,7 +360,7 @@ def create_leave_request(
 
     trimmed_reason = normalize_leave_reason(reason)
 
-    selected, resolved_days = _validate_leave_dates(dates)
+    selected, resolved_days = _validate_leave_dates(dates, emergency=emergency)
     period = _request_level_period(selected)
 
     assert_no_overlap(employee, selected)
@@ -237,10 +375,30 @@ def create_leave_request(
         half_day_period=period,
         status=RequestStatus.PENDING,
         reason=trimmed_reason,
+        emergency=emergency,
     )
     _sync_request_days(request, selected)
     balance.pending += resolved_days
     balance.save(update_fields=['pending'])
+    type_label = _leave_type_label(leave_type)
+    days_label = _days_label(resolved_days)
+    notify_user(
+        employee,
+        'Demande soumise',
+        f'Votre demande de {type_label} ({days_label}) a été envoyée pour approbation.',
+        NotificationType.INFO,
+    )
+    notify_admins(
+        'Nouvelle demande',
+        f'{_person_name(employee)} a demandé {days_label} de {type_label}.',
+        NotificationType.REMINDER,
+        exclude_user=employee,
+        email_action='created',
+        email_category='leave_request',
+        email_actor=employee,
+        email_details=_leave_request_details(request),
+        email_cta_path='/admin/requests',
+    )
     return request
 
 
@@ -251,6 +409,7 @@ def update_leave_request(
     leave_type,
     dates,
     reason='',
+    emergency=False,
 ):
     if request.status != RequestStatus.PENDING:
         raise ValidationError(
@@ -262,7 +421,7 @@ def update_leave_request(
         )
 
     trimmed_reason = normalize_leave_reason(reason)
-    selected, resolved_days = _validate_leave_dates(dates)
+    selected, resolved_days = _validate_leave_dates(dates, emergency=emergency)
     period = _request_level_period(selected)
     assert_no_overlap(
         request.employee,
@@ -285,6 +444,7 @@ def update_leave_request(
     request.days = resolved_days
     request.half_day_period = period
     request.reason = trimmed_reason
+    request.emergency = emergency
     request.save(
         update_fields=[
             'type',
@@ -293,12 +453,26 @@ def update_leave_request(
             'days',
             'half_day_period',
             'reason',
+            'emergency',
         ]
     )
     _sync_request_days(request, selected)
 
     balance.pending += resolved_days
     balance.save(update_fields=['pending'])
+    type_label = _leave_type_label(leave_type)
+    days_label = _days_label(resolved_days)
+    notify_admins(
+        'Demande modifiée',
+        f'{_person_name(request.employee)} a modifié sa demande de {type_label} ({days_label}).',
+        NotificationType.REMINDER,
+        exclude_user=request.employee,
+        email_action='updated',
+        email_category='leave_request',
+        email_actor=request.employee,
+        email_details=_leave_request_details(request),
+        email_cta_path='/admin/requests',
+    )
     return request
 
 
@@ -336,11 +510,24 @@ def approve_leave_request(request: LeaveRequest, reviewer, comment=''):
         update_fields=['status', 'reviewed_by', 'reviewed_at', 'review_comment']
     )
 
-    Notification.objects.create(
-        user=request.employee,
-        title='Leave request approved',
-        message=f'Your {request.type} leave {describe_leave(request)} was approved.',
-        type=NotificationType.SUCCESS,
+    type_label = _leave_type_label(request.type)
+    days_label = _days_label(request.days)
+    notify_user(
+        request.employee,
+        'Demande approuvée',
+        f'Votre demande de {type_label} ({days_label}) a été approuvée.',
+        NotificationType.SUCCESS,
+    )
+    notify_admins(
+        'Demande approuvée',
+        f'{_person_name(reviewer)} a approuvé la demande de {type_label} de {_person_name(request.employee)} ({days_label}).',
+        NotificationType.SUCCESS,
+        exclude_user=reviewer,
+        email_action='approved',
+        email_category='leave_request',
+        email_actor=reviewer,
+        email_details=_leave_request_details(request),
+        email_cta_path='/admin/requests',
     )
     return request
 
@@ -349,30 +536,102 @@ def reject_leave_request(request: LeaveRequest, reviewer, comment=''):
     if request.status != RequestStatus.PENDING:
         raise ValidationError({'status': 'Only pending requests can be rejected.'})
 
+    trimmed = (comment or '').strip()
+    if not trimmed:
+        raise ValidationError(
+            {'review_comment': 'Indiquez la raison du refus pour que l’employé puisse la voir.'}
+        )
+
     release_pending(request)
 
     request.status = RequestStatus.REJECTED
     request.reviewed_by = reviewer
     request.reviewed_at = timezone.now()
-    request.review_comment = comment or ''
+    request.review_comment = trimmed
     request.save(
         update_fields=['status', 'reviewed_by', 'reviewed_at', 'review_comment']
     )
 
     Notification.objects.create(
         user=request.employee,
-        title='Leave request rejected',
-        message=f'Your {request.type} leave {describe_leave(request)} was rejected.',
+        title='Demande refusée',
+        message=f'Votre demande de congé a été refusée. Raison : {trimmed}',
         type=NotificationType.INFO,
+    )
+    notify_admins(
+        'Demande refusée',
+        f'{_person_name(reviewer)} a refusé la demande de congé de {_person_name(request.employee)}. Raison : {trimmed}',
+        NotificationType.INFO,
+        exclude_user=reviewer,
+        email_action='rejected',
+        email_category='leave_request',
+        email_actor=reviewer,
+        email_details=[
+            *_leave_request_details(request),
+            ('Commentaire', trimmed),
+        ],
+        email_cta_path='/admin/requests',
     )
     return request
 
 
-def delete_leave_request(request: LeaveRequest):
-    if request.status == RequestStatus.PENDING:
+def delete_leave_request(request: LeaveRequest, *, actor=None):
+    employee = request.employee
+    leave_type = request.type
+    days = request.days
+    status = request.status
+    type_label = _leave_type_label(leave_type)
+    days_label = _days_label(days)
+    actor_is_admin = (
+        actor is not None
+        and getattr(getattr(actor, 'profile', None), 'role', None) == UserRole.ADMIN
+        and actor.pk != employee.pk
+    )
+
+    if status == RequestStatus.PENDING:
         release_pending(request)
-    elif request.status == RequestStatus.APPROVED:
-        balance = get_or_create_balance(request.employee, request.type)
+    elif status == RequestStatus.APPROVED:
+        balance = get_or_create_balance(employee, leave_type)
         balance.used = max(balance.used - request.days, Decimal('0'))
         balance.save(update_fields=['used'])
     request.delete()
+
+    if actor_is_admin:
+        notify_user(
+            employee,
+            'Demande supprimée',
+            f'Votre demande de {type_label} ({days_label}) a été supprimée par un administrateur.',
+            NotificationType.INFO,
+        )
+        notify_admins(
+            'Demande supprimée',
+            f'{_person_name(actor)} a supprimé la demande de {type_label} de {_person_name(employee)} ({days_label}).',
+            NotificationType.INFO,
+            exclude_user=actor,
+            email_action='deleted',
+            email_category='leave_request',
+            email_actor=actor,
+            email_details=[
+                ('Employé', _person_name(employee)),
+                ('Type', type_label),
+                ('Durée', days_label),
+                ('Statut précédent', status),
+            ],
+            email_cta_path='/admin/requests',
+        )
+    elif status == RequestStatus.PENDING:
+        notify_admins(
+            'Demande annulée',
+            f'{_person_name(employee)} a annulé sa demande de {type_label} ({days_label}).',
+            NotificationType.INFO,
+            exclude_user=employee,
+            email_action='cancelled',
+            email_category='leave_request',
+            email_actor=employee,
+            email_details=[
+                ('Employé', _person_name(employee)),
+                ('Type', type_label),
+                ('Durée', days_label),
+            ],
+            email_cta_path='/admin/requests',
+        )

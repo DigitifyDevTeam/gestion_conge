@@ -42,6 +42,7 @@ class RequestStatus(models.TextChoices):
 class UserRole(models.TextChoices):
     EMPLOYEE = 'employee', 'Employee'
     ADMIN = 'admin', 'Admin'
+    COMPTABLE = 'comptable', 'Comptable'
 
 
 class NotificationType(models.TextChoices):
@@ -147,6 +148,7 @@ class LeaveRequest(models.Model):
         default=RequestStatus.PENDING,
     )
     reason = models.TextField(blank=True, default='')
+    emergency = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

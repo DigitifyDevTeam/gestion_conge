@@ -46,3 +46,10 @@ export async function markNotificationRead(id: string, read = true): Promise<App
 export async function deleteNotification(id: string): Promise<void> {
   await apiFetch<void>(`/notifications/${id}/`, { method: 'DELETE' });
 }
+
+export async function markAllNotificationsRead(): Promise<number> {
+  const data = await apiFetch<{ updated: number }>('/notifications/mark_all_read/', {
+    method: 'POST',
+  });
+  return data.updated;
+}

@@ -1,0 +1,25 @@
+HolidayHub — {{ badge_label }}
+========================================
+
+{{ title }}
+
+{{ message }}
+{% if actor_name %}
+
+Effectué par : {{ actor_name }}
+{% endif %}
+{% if details %}
+
+Détails :
+{% for label, value in details %}
+  - {{ label }} : {{ value }}
+{% endfor %}
+{% endif %}
+{% if cta_url %}
+
+Voir dans l'application : {{ cta_url }}
+{% endif %}
+
+---
+Cet e-mail a été envoyé automatiquement par HolidayHub.
+{{ timestamp }}

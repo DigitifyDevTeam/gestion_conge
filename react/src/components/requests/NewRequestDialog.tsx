@@ -2,10 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { format, parseISO, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Palmtree, Clock, X } from 'lucide-react';
+import { AlertCircle, Palmtree, Clock, Siren, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -22,12 +23,14 @@ import {
 import { cn } from '@/lib/utils';
 import {
   composeLeaveReason,
+  earliestLeaveDate,
   formatLeaveDates,
   formatLeaveDuration,
   holidayDateKeys,
   isLeaveReasonChoice,
   isWorkingDay,
   LEAVE_REASON_OPTIONS,
+  MIN_LEAVE_NOTICE_DAYS,
   parseLeaveReason,
   sortLeaveDays,
   sumLeaveDayValues,
@@ -151,6 +154,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   const [otherReason, setOtherReason] = useState('');
   const [apiConflictKeys, setApiConflictKeys] = useState<string[]>([]);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfDay(new Date()));
+  const [emergencyMode, setEmergencyMode] = useState(false);
 
   useQuery({
     queryKey: ['leave-balances', 'me'],
@@ -185,6 +189,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     setReasonChoice('');
     setOtherReason('');
     setApiConflictKeys([]);
+    setEmergencyMode(false);
   };
 
   useEffect(() => {
@@ -206,6 +211,11 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     setReasonChoice(parsed.choice);
     setOtherReason(parsed.otherDetail);
     setApiConflictKeys([]);
+    const noticeDate = earliestLeaveDate(new Date(), false);
+    setEmergencyMode(
+      Boolean(requestToEdit.emergency) ||
+        editDays.some((day) => startOfDay(day.date) < noticeDate),
+    );
     setVisibleMonth(editDays[0]?.date ?? startOfDay(new Date()));
   }, [open, requestToEdit]);
 
@@ -213,6 +223,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
     queryClient.invalidateQueries({ queryKey: ['leave-balances'] });
     queryClient.invalidateQueries({ queryKey: ['team'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
   };
 
   const occupiedDates = useMemo(() => {
@@ -283,6 +294,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   });
 
   const today = startOfDay(new Date());
+  const minSelectableDate = earliestLeaveDate(today, emergencyMode);
   const sortedDays = useMemo(() => sortLeaveDays(selectedDays), [selectedDays]);
   const resolvedDays = sumLeaveDayValues(sortedDays);
   const selectedDates = sortedDays.map((day) => day.date);
@@ -310,10 +322,23 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   const hasConflicts = conflictKeys.size > 0;
 
   const isDaySelectable = (day: Date) =>
-    startOfDay(day) >= today && isWorkingDay(day, holidayKeys);
+    startOfDay(day) >= minSelectableDate && isWorkingDay(day, holidayKeys);
+
+  const handleEmergencyToggle = () => {
+    setEmergencyMode((current) => {
+      const next = !current;
+      if (!next) {
+        const noticeDate = earliestLeaveDate(today, false);
+        setSelectedDays((days) =>
+          days.filter((day) => startOfDay(day.date) >= noticeDate),
+        );
+      }
+      return next;
+    });
+  };
 
   const handleCalendarSelect = (dates: Date[] | undefined) => {
-    const next = (dates ?? []).map(startOfDay);
+    const next = (dates ?? []).map(startOfDay).filter(isDaySelectable);
     const nextKeys = new Set(next.map(toDateKey));
     setApiConflictKeys((current) => current.filter((key) => nextKeys.has(key)));
     setSelectedDays((current) => {
@@ -353,9 +378,12 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
 
     const invalidDay = sortedDays.find((day) => !isDaySelectable(day.date));
     if (invalidDay) {
+      const tooSoon = startOfDay(invalidDay.date) < minSelectableDate;
       toast({
-        title: 'Jour invalide',
-        description: `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est passé, un week-end ou un jour férié.`,
+        title: tooSoon ? `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours` : 'Jour invalide',
+        description: tooSoon
+          ? `Les congés doivent commencer au plus tôt le ${format(minSelectableDate, 'd MMMM yyyy', { locale: fr })}. Activez le mode urgence pour aujourd’hui ou demain.`
+          : `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est passé, un week-end ou un jour férié.`,
         variant: 'destructive',
       });
       return;
@@ -393,6 +421,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
       type: selectedType,
       dates: sortedDays,
       reason: composeLeaveReason(reasonChoice, otherReason),
+      emergency: emergencyMode,
     };
     if (isEditing) {
       updateMutation.mutate(payload);
@@ -404,14 +433,33 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        aria-describedby={undefined}
-        className="flex max-h-[min(90vh,48rem)] w-[min(96vw,68rem)] max-w-5xl flex-col gap-4 overflow-hidden p-6"
+        className="leave-request-dialog flex max-h-[min(90vh,48rem)] w-[min(96vw,68rem)] max-w-5xl flex-col gap-4 overflow-hidden p-6"
       >
-        <DialogTitle className="sr-only">
-          {isEditing ? 'Modifier la demande' : 'Demander un congé'}
-        </DialogTitle>
+        <div className="leave-request-header flex items-start justify-between gap-3 pr-8">
+          <div className="min-w-0 space-y-1">
+            <DialogTitle>
+              {isEditing ? 'Modifier la demande' : 'Demander un congé'}
+            </DialogTitle>
+            <DialogDescription>
+              {emergencyMode
+                ? 'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants.'
+                : `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`}
+            </DialogDescription>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={emergencyMode ? 'destructive' : 'outline'}
+            aria-pressed={emergencyMode}
+            onClick={handleEmergencyToggle}
+            className="shrink-0"
+          >
+            <Siren className="h-4 w-4" />
+            Mode urgence
+          </Button>
+        </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-4 gap-y-2 overflow-y-auto sm:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)] sm:grid-rows-[auto_minmax(0,1fr)_auto] sm:overflow-hidden">
+        <div className="leave-request-grid grid min-h-0 grid-cols-1 gap-x-4 gap-y-2 overflow-y-auto sm:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)] sm:grid-rows-[auto_auto_auto] sm:overflow-hidden">
           <div className="space-y-1.5 sm:col-start-2 sm:row-start-1">
             <Label className="text-sm font-medium">Type de congé</Label>
             <div className="grid grid-cols-2 gap-2">
@@ -447,12 +495,17 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col rounded-lg border border-border sm:col-start-1 sm:row-span-2 sm:row-start-1">
+          <div className="leave-request-calendar flex min-h-0 flex-col overflow-hidden rounded-lg border border-border sm:col-start-1 sm:row-span-2 sm:row-start-1">
             <HolidayNameByKeyContext.Provider value={holidayNameByKey}>
               <Calendar
                 mode="multiple"
                 selected={selectedDates}
                 onSelect={handleCalendarSelect}
+                onDayClick={(day, modifiers) => {
+                  if (modifiers.outside && !modifiers.disabled) {
+                    setVisibleMonth(startOfDay(day));
+                  }
+                }}
                 disabled={(day) => !isDaySelectable(day)}
                 month={visibleMonth}
                 onMonthChange={setVisibleMonth}
@@ -486,19 +539,22 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
                   head_cell:
                     'text-muted-foreground rounded-md flex-1 font-medium text-xs',
                   row: 'flex w-full mt-1',
-                  cell: 'relative flex-1 aspect-square p-0.5 text-center text-sm focus-within:relative focus-within:z-20',
+                  cell: 'relative flex-1 h-9 max-h-9 p-0.5 text-center text-sm focus-within:relative focus-within:z-20',
                   day: cn(
                     buttonVariants({ variant: 'ghost' }),
                     'h-full w-full p-0 text-sm font-normal aria-selected:opacity-100',
                   ),
+                  day_outside:
+                    'day-outside enabled:text-foreground enabled:opacity-100 aria-selected:opacity-100',
+                  day_disabled: 'text-muted-foreground opacity-50',
                 }}
                 components={{
                   DayContent: RequestCalendarDayContent,
                 }}
-                className="pointer-events-auto w-full min-h-0 flex-1 p-3"
+                className="pointer-events-auto w-full shrink-0 p-3"
               />
             </HolidayNameByKeyContext.Provider>
-            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="leave-request-legend relative z-10 flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-primary" />
                 <span>Sélectionné</span>
@@ -559,7 +615,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border sm:col-start-2 sm:row-span-2 sm:row-start-2">
+          <div className="leave-request-days flex min-h-0 flex-col overflow-hidden rounded-lg border border-border sm:col-start-2 sm:row-span-2 sm:row-start-2">
             {hasConflicts && (
               <div
                 role="alert"
@@ -629,7 +685,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
                   })}
                 </ul>
               ) : (
-                <div className="flex h-full min-h-[12rem] items-center justify-center px-3 text-center text-sm text-muted-foreground">
+                <div className="leave-request-days-empty flex h-full min-h-[8rem] items-center justify-center px-3 text-center text-sm text-muted-foreground">
                   Aucun jour sélectionné
                 </div>
               )}
@@ -647,12 +703,13 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
           </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border pt-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="leave-request-footer flex shrink-0 justify-end gap-2 border-t border-border pt-3">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
           <Button
             variant="gradient"
+            size="sm"
             onClick={handleSubmit}
             disabled={
               createMutation.isPending || updateMutation.isPending || hasConflicts

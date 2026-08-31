@@ -178,7 +178,7 @@ export default function BalanceManagementPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Gestion des soldes</h1>
           <p className="text-muted-foreground mt-1">Ajustez les soldes de congés des employés</p>

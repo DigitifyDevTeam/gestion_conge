@@ -2,10 +2,10 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { User, AuthState } from '@/types/auth';
 import {
   fetchMe,
-  googleLoginRequest,
   loginRequest,
   logoutRequest,
   registerRequest,
+  updateMe,
   verifyEmailRequest,
 } from '@/api/auth';
 import { ApiError, getAccessToken } from '@/api/client';
@@ -26,14 +26,17 @@ interface AuthContextType extends AuthState {
   signup: (
     payload: SignUpPayload,
   ) => Promise<{ ok: boolean; error?: string; needsVerification?: boolean; email?: string }>;
-  loginWithGoogle: (
-    idToken: string,
-  ) => Promise<{ ok: boolean; error?: string }>;
   verifyEmail: (
     email: string,
     code: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
+  updateProfile: (payload: {
+    name?: string;
+    department?: string;
+    position?: string;
+    avatar?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   isAdmin: () => boolean;
   isEmployee: () => boolean;
 }
@@ -115,23 +118,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async (idToken: string) => {
-    setIsLoading(true);
-    try {
-      const loggedIn = await googleLoginRequest(idToken);
-      setUser(loggedIn);
-      setIsLoading(false);
-      return { ok: true };
-    } catch (err) {
-      setIsLoading(false);
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : 'Connexion Google impossible.';
-      return { ok: false, error: message };
-    }
-  };
-
   const verifyEmail = async (email: string, code: string) => {
     setIsLoading(true);
     try {
@@ -152,6 +138,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logoutRequest();
   };
 
+  const updateProfile = async (payload: {
+    name?: string;
+    department?: string;
+    position?: string;
+    avatar?: string;
+  }) => {
+    try {
+      const updated = await updateMe(payload);
+      setUser(updated);
+      return { ok: true };
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Mise à jour impossible.';
+      return { ok: false, error: message };
+    }
+  };
+
   const isAdmin = () => user?.role === 'admin';
   const isEmployee = () => user?.role === 'employee';
 
@@ -161,9 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading,
     login,
     signup,
-    loginWithGoogle,
     verifyEmail,
     logout,
+    updateProfile,
     isAdmin,
     isEmployee,
   };

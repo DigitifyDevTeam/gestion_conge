@@ -141,3 +141,194 @@
     background: linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(25 95% 53%) 100%);
   }
 }
+
+.app-menu-btn,
+.app-sidebar-backdrop {
+  display: none;
+}
+
+/* Device size limits: tablet <=1024px, mobile <=768px, small mobile <=480px.
+   Desktop (>1024px) keeps the base styles above. */
+
+@media (max-width: 1024px) {
+  .app-menu-btn {
+    display: inline-flex;
+  }
+
+  .app-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    border: 0;
+    background: rgb(0 0 0 / 0.45);
+  }
+
+  .app-sidebar {
+    width: 16rem;
+    transform: translateX(-100%);
+  }
+
+  .app-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .app-sidebar-collapse {
+    display: none;
+  }
+
+  .app-main {
+    margin-left: 0;
+  }
+
+  .app-header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .app-main > main {
+    padding: 16px;
+  }
+
+  .page-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .leave-request-dialog {
+    width: calc(100vw - 24px);
+    max-width: 42rem;
+    max-height: 92vh;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .leave-request-header,
+  .leave-request-footer {
+    flex-shrink: 0;
+  }
+
+  .leave-request-grid {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .leave-request-grid > * {
+    grid-column: auto;
+    grid-row: auto;
+    flex-shrink: 0;
+  }
+
+  .leave-request-calendar {
+    flex-shrink: 0;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .leave-request-days {
+    min-height: 0;
+  }
+
+  .leave-request-days-empty {
+    min-height: 4.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    height: 56px;
+  }
+
+  .app-header-search {
+    display: none;
+  }
+
+  .app-main > main {
+    padding: 12px;
+  }
+
+  .page-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-toolbar h1 {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  .month-cal-cell {
+    min-height: 68px;
+    padding: 6px;
+  }
+
+  .leave-request-dialog {
+    left: 0;
+    top: 0;
+    transform: none;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 12px;
+    padding-bottom: 16px;
+    gap: 10px;
+  }
+
+  .leave-request-header {
+    flex-wrap: wrap;
+    padding-right: 28px;
+  }
+
+  .leave-request-header > button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .leave-request-calendar table {
+    min-height: 15.5rem;
+  }
+
+  .leave-request-legend {
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .leave-request-footer {
+    flex-direction: column-reverse;
+  }
+
+  .leave-request-footer > button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .login-page {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .login-page h1 {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-toolbar h1 {
+    font-size: 1.125rem;
+  }
+
+  .month-cal-cell {
+    min-height: 56px;
+    padding: 4px;
+  }
+
+  .leave-request-legend {
+    font-size: 10px;
+  }
+}

@@ -20,6 +20,13 @@ interface ApiLeaveRequest {
   half_day_period?: HalfDayPeriod | null;
   status: RequestStatus;
   reason?: string;
+  emergency?: boolean;
+  employee_balance?: {
+    total: number | string;
+    used: number | string;
+    pending: number | string;
+    remaining: number | string;
+  } | null;
   created_at: string;
   reviewed_by?: number | null;
   reviewed_by_name?: string | null;
@@ -80,6 +87,16 @@ export function mapLeaveRequest(r: ApiLeaveRequest): HolidayRequest {
     halfDayPeriod: normalizeHalfDayPeriod(r.half_day_period) || undefined,
     status: r.status,
     reason: r.reason || undefined,
+    emergency: Boolean(r.emergency),
+    employeeBalance: r.employee_balance
+      ? {
+          type: r.type,
+          total: Number(r.employee_balance.total),
+          used: Number(r.employee_balance.used),
+          pending: Number(r.employee_balance.pending),
+          remaining: Number(r.employee_balance.remaining),
+        }
+      : undefined,
     createdAt: new Date(r.created_at),
     reviewedBy: r.reviewed_by_name || undefined,
     reviewedAt: r.reviewed_at ? new Date(r.reviewed_at) : undefined,
@@ -97,6 +114,7 @@ export interface LeaveRequestPayload {
   type: HolidayType;
   dates: LeaveDay[];
   reason: string;
+  emergency?: boolean;
 }
 
 function serializePayload(payload: LeaveRequestPayload) {
@@ -107,6 +125,7 @@ function serializePayload(payload: LeaveRequestPayload) {
       half_day_period: day.halfDayPeriod || null,
     })),
     reason: payload.reason.trim(),
+    emergency: Boolean(payload.emergency),
   });
 }
 

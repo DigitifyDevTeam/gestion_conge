@@ -1,17 +1,62 @@
+from datetime import datetime
+from urllib.parse import quote
+
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
+from django.template.loader import render_to_string
+from django.utils import timezone
+
+from .account_activation import ACTIVATION_MAX_AGE_SECONDS, make_activation_token
 
 
-def send_invite_email(*, email: str, name: str = '') -> None:
-    """Notify a newly authorized user that they can sign in with Google."""
+def _activation_url(user) -> str:
+    token = make_activation_token(user)
+    frontend = settings.FRONTEND_URL.rstrip('/')
+    return f'{frontend}/activate?token={quote(token)}'
+
+
+def send_activation_email(*, user) -> None:
+    """Send a branded activation link so the user can verify email and set a password."""
+    email = user.email
+    name = (user.get_full_name() or '').strip() or email
+    activation_url = _activation_url(user)
+    expiry_days = max(ACTIVATION_MAX_AGE_SECONDS // 86400, 1)
+    sent_at = timezone.localtime(timezone.now()).strftime('%d/%m/%Y à %H:%M')
+
+    subject = 'HolidayHub — activez votre compte'
+    context = {
+        'subject': subject,
+        'name': name,
+        'email': email,
+        'activation_url': activation_url,
+        'expiry_days': expiry_days,
+        'sent_at': sent_at,
+        'year': datetime.now().year,
+    }
+
+    html_body = render_to_string('emails/account_activation.html', context)
+    text_body = render_to_string('emails/account_activation.txt', context)
+
+    email_msg = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+    email_msg.attach_alternative(html_body, 'text/html')
+    email_msg.send(fail_silently=False)
+
+
+def send_comptable_welcome_email(*, email: str, name: str = '') -> None:
+    """Notify a comptable that they will receive monthly leave reports."""
     display_name = (name or '').strip() or email
-    login_url = settings.FRONTEND_URL.rstrip('/')
-    subject = 'Invitation HolidayHub — votre compte est prêt'
+    subject = 'HolidayHub — compte comptable configuré'
     body = (
         f'Bonjour {display_name},\n\n'
-        f'Un administrateur a créé votre compte HolidayHub pour l\'adresse {email}.\n\n'
-        f'Vous pouvez vous connecter uniquement avec Google, en utilisant cet e-mail :\n'
-        f'{login_url}\n\n'
+        f'Un administrateur vous a ajouté comme comptable sur HolidayHub.\n\n'
+        f'Vous recevrez automatiquement un e-mail récapitulatif chaque mois '
+        f'avec la liste des congés approuvés et des jours fériés.\n\n'
+        f'Vous n\'avez pas besoin de vous connecter à l\'application.\n\n'
         f'Si vous n\'êtes pas concerné(e), ignorez cet e-mail.\n\n'
         f'— L\'équipe HolidayHub'
     )

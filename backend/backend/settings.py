@@ -143,7 +143,3 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'HolidayHub <noreply@holidayhub.local>',
 )
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-
-# Google OAuth2 (GIS ID-token verification)
-GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
-GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')

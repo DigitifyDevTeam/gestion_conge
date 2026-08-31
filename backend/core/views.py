@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.contrib.auth.models import User
+from django.db.models import Prefetch
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,11 +10,6 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .google_auth import (
-    get_authorized_user_from_google,
-    issue_tokens_for_user,
-    verify_google_id_token,
-)
 from .email_otp import issue_and_send_otp, verify_otp
 from .models import (
     EmailOTPPurpose,
@@ -23,16 +19,18 @@ from .models import (
     Notification,
     PublicHoliday,
     RequestStatus,
+    UserRole,
 )
 from .permissions import IsAdminOrReadOnly, IsAdminRole, is_admin_user
 from .serializers import (
+    ActivateAccountSerializer,
     EmailOnlySerializer,
     EmailTokenObtainPairSerializer,
-    GoogleAuthSerializer,
     LeaveBalanceSerializer,
     LeaveRequestSerializer,
     SetAnnualAllocationSerializer,
     MeSerializer,
+    MeUpdateSerializer,
     NotificationSerializer,
     PublicHolidaySerializer,
     ResendCodeSerializer,
@@ -40,26 +38,16 @@ from .serializers import (
     ReviewActionSerializer,
     TeamMemberSerializer,
     UserSerializer,
+    ValidateActivationTokenSerializer,
     VerifyCodeSerializer,
     display_name,
 )
+from .account_activation import resolve_activation_user
 from . import services
 
 
 class EmailTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
-
-
-class GoogleAuthView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        serializer = GoogleAuthSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        payload = verify_google_id_token(serializer.validated_data['id_token'])
-        user = get_authorized_user_from_google(payload)
-        return Response(issue_tokens_for_user(user))
 
 
 class RegisterView(APIView):
@@ -75,6 +63,51 @@ class RegisterView(APIView):
                 ),
             },
             status=status.HTTP_403_FORBIDDEN,
+        )
+
+
+class ValidateActivationView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        serializer = ValidateActivationTokenSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        user = resolve_activation_user(serializer.validated_data['token'])
+        return Response(
+            {
+                'valid': True,
+                'email': user.email,
+                'name': display_name(user),
+            }
+        )
+
+
+class ActivateAccountView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = ActivateAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = resolve_activation_user(serializer.validated_data['token'])
+        user.set_password(serializer.validated_data['password'])
+        user.is_active = True
+        user.save(update_fields=['password', 'is_active'])
+
+        profile = getattr(user, 'profile', None)
+        if profile:
+            profile.email_verified = True
+            profile.save(update_fields=['email_verified'])
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                'detail': 'Compte activé avec succès.',
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': MeSerializer(user).data,
+            }
         )
 
 
@@ -209,6 +242,16 @@ class MeView(APIView):
     def get(self, request):
         return Response(MeSerializer(request.user).data)
 
+    def patch(self, request):
+        serializer = MeUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(MeSerializer(request.user).data)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related('profile').order_by('first_name', 'last_name')
@@ -225,6 +268,60 @@ class UserViewSet(viewsets.ModelViewSet):
         if role:
             qs = qs.filter(profile__role=role)
         return qs
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        profile = getattr(user, 'profile', None)
+        services.notify_admins(
+            'Nouvel utilisateur',
+            f'{display_name(user)} ({user.email}) a été ajouté au système.',
+            email_action='created',
+            email_category='user',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', display_name(user)),
+                ('E-mail', user.email),
+                ('Rôle', ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
+                ('Département', profile.department if profile else '—'),
+            ],
+            email_cta_path='/admin/users',
+        )
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        profile = getattr(user, 'profile', None)
+        services.notify_admins(
+            'Utilisateur modifié',
+            f'{display_name(user)} ({user.email}) a été mis à jour.',
+            email_action='updated',
+            email_category='user',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', display_name(user)),
+                ('E-mail', user.email),
+                ('Rôle', ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
+                ('Département', profile.department if profile else '—'),
+                ('Actif', 'Oui' if user.is_active else 'Non'),
+            ],
+            email_cta_path='/admin/users',
+        )
+
+    def perform_destroy(self, instance):
+        name = display_name(instance)
+        email = instance.email
+        services.notify_admins(
+            'Utilisateur supprimé',
+            f'{name} ({email}) a été retiré du système.',
+            email_action='deleted',
+            email_category='user',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', name),
+                ('E-mail', email),
+            ],
+            email_cta_path='/admin/users',
+        )
+        instance.delete()
 
 
 class LeaveBalanceViewSet(viewsets.ModelViewSet):
@@ -251,7 +348,41 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         total = serializer.validated_data['total']
         updated = LeaveBalance.objects.filter(type=LeaveType.ANNUAL).update(total=total)
+        services.notify_admins(
+            'Allocation annuelle modifiée',
+            f'L\'allocation annuelle a été fixée à {total} jours pour {updated} employé(s).',
+            email_action='updated',
+            email_category='leave_balance',
+            email_actor=request.user,
+            email_details=[
+                ('Nouvelle allocation', f'{total} jours'),
+                ('Employés concernés', str(updated)),
+            ],
+            email_cta_path='/admin/balances',
+        )
         return Response({'updated': updated, 'total': total})
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_total = instance.total
+        response = super().partial_update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        services.notify_admins(
+            'Solde modifié',
+            f'Le solde de {display_name(instance.user)} ({instance.get_type_display()}) a été mis à jour.',
+            email_action='updated',
+            email_category='leave_balance',
+            email_actor=request.user,
+            email_details=[
+                ('Employé', display_name(instance.user)),
+                ('Type', instance.get_type_display()),
+                ('Total', f'{old_total} → {instance.total} jours'),
+                ('Utilisé', f'{instance.used} jours'),
+                ('En attente', f'{instance.pending} jours'),
+            ],
+            email_cta_path='/admin/balances',
+        )
+        return response
 
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
@@ -260,7 +391,10 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = LeaveRequest.objects.select_related(
             'employee', 'employee__profile', 'reviewed_by'
-        ).prefetch_related('day_entries')
+        ).prefetch_related(
+            'day_entries',
+            Prefetch('employee__leave_balances', queryset=LeaveBalance.objects.all()),
+        )
         if not is_admin_user(self.request.user):
             qs = qs.filter(employee=self.request.user)
         status_param = self.request.query_params.get('status')
@@ -296,7 +430,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
                 self.request,
                 message='Seules les demandes en attente peuvent être supprimées.',
             )
-        services.delete_leave_request(instance)
+        services.delete_leave_request(instance, actor=user)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -328,10 +462,59 @@ class PublicHolidayViewSet(viewsets.ModelViewSet):
     serializer_class = PublicHolidaySerializer
     permission_classes = [IsAdminOrReadOnly]
 
+    def perform_create(self, serializer):
+        holiday = serializer.save()
+        services.notify_admins(
+            'Jour férié ajouté',
+            f'« {holiday.name} » a été ajouté au calendrier.',
+            email_action='created',
+            email_category='public_holiday',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', holiday.name),
+                ('Date', holiday.date.strftime('%d/%m/%Y')),
+                ('Religieux', 'Oui' if holiday.is_religious else 'Non'),
+            ],
+            email_cta_path='/holidays',
+        )
+
+    def perform_update(self, serializer):
+        holiday = serializer.save()
+        services.notify_admins(
+            'Jour férié modifié',
+            f'« {holiday.name} » a été mis à jour.',
+            email_action='updated',
+            email_category='public_holiday',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', holiday.name),
+                ('Date', holiday.date.strftime('%d/%m/%Y')),
+                ('Religieux', 'Oui' if holiday.is_religious else 'Non'),
+            ],
+            email_cta_path='/holidays',
+        )
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        date_label = instance.date.strftime('%d/%m/%Y')
+        services.notify_admins(
+            'Jour férié supprimé',
+            f'« {name} » ({date_label}) a été retiré du calendrier.',
+            email_action='deleted',
+            email_category='public_holiday',
+            email_actor=self.request.user,
+            email_details=[
+                ('Nom', name),
+                ('Date', date_label),
+            ],
+            email_cta_path='/holidays',
+        )
+        instance.delete()
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
-    http_method_names = ['get', 'patch', 'put', 'delete', 'head', 'options']
+    http_method_names = ['get', 'post', 'patch', 'put', 'delete', 'head', 'options']
 
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
@@ -347,7 +530,11 @@ class TeamView(APIView):
 
     def get(self, request):
         today = date.today()
-        users = User.objects.filter(is_active=True).select_related('profile')
+        users = (
+            User.objects.filter(is_active=True)
+            .exclude(profile__role=UserRole.COMPTABLE)
+            .select_related('profile')
+        )
         approved = LeaveRequest.objects.filter(status=RequestStatus.APPROVED)
         members = []
         for user in users:
@@ -375,6 +562,7 @@ class TeamView(APIView):
                     'is_on_holiday': current_req is not None,
                     'leave_start': relevant.start_date if relevant else None,
                     'leave_end': relevant.end_date if relevant else None,
+                    'leave_days': float(relevant.days) if relevant else None,
                 }
             )
         return Response(TeamMemberSerializer(members, many=True).data)

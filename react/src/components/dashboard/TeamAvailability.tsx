@@ -2,7 +2,7 @@ import { TeamMember } from '@/types/holiday';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Users, Palmtree } from 'lucide-react';
-import { formatLeaveDateRange } from '@/lib/leave';
+import { formatLeaveDateRange, formatLeaveDurationCompact } from '@/lib/leave';
 
 interface TeamAvailabilityProps {
   members: TeamMember[];
@@ -12,7 +12,11 @@ function leaveLabel(member: TeamMember): string | null {
   if (!member.leaveStart || !member.leaveEnd) {
     return null;
   }
-  return `Congé : ${formatLeaveDateRange(member.leaveStart, member.leaveEnd)}`;
+  const range = formatLeaveDateRange(member.leaveStart, member.leaveEnd);
+  if (member.leaveDays && member.leaveDays > 0) {
+    return `Congé : ${range} · ${formatLeaveDurationCompact(member.leaveDays)}`;
+  }
+  return `Congé : ${range}`;
 }
 
 function MemberLeaveStatus({ member }: { member: TeamMember }) {
@@ -55,6 +59,12 @@ export function TeamAvailability({ members }: TeamAvailabilityProps) {
     'bg-chart-5/20 text-chart-5',
   ];
 
+  const availableCount = members.filter((member) => !member.isOnHoliday).length;
+  const plannedDays = members.reduce(
+    (total, member) => total + (member.leaveDays && member.leaveDays > 0 ? member.leaveDays : 0),
+    0,
+  );
+
   return (
     <div className="bg-card rounded-xl border border-border p-5 shadow-card animate-fade-in" style={{ animationDelay: '500ms' }}>
       <div className="flex items-center justify-between mb-4">
@@ -63,7 +73,8 @@ export function TeamAvailability({ members }: TeamAvailabilityProps) {
           <h3 className="font-semibold text-foreground">Disponibilité de l'équipe</h3>
         </div>
         <span className="text-xs text-muted-foreground">
-          {members.filter(m => !m.isOnHoliday).length}/{members.length} disponible{members.filter(m => !m.isOnHoliday).length > 1 ? 's' : ''}
+          {availableCount}/{members.length} disponible{availableCount > 1 ? 's' : ''}
+          {plannedDays > 0 ? ` · ${formatLeaveDurationCompact(plannedDays)} planifiés` : ''}
         </span>
       </div>
 

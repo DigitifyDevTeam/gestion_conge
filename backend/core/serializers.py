@@ -6,7 +6,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .invites import send_invite_email
+from .invites import send_activation_email, send_comptable_welcome_email
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
     EmployeeProfile,
@@ -41,15 +41,26 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
                         raise AuthenticationFailed(
                             {
                                 'detail': (
-                                    'Compte non vérifié. Consultez votre e-mail '
-                                    'pour le code de confirmation.'
+                                    'Compte non activé. Consultez votre e-mail '
+                                    'et cliquez sur le lien d\'activation.'
                                 ),
                                 'code': 'email_not_verified',
                                 'email': user.email,
                             }
                         )
                     raise AuthenticationFailed({'detail': 'Ce compte est désactivé.'})
-        return super().validate(attrs)
+                profile = getattr(user, 'profile', None)
+                if profile and profile.role == UserRole.COMPTABLE:
+                    raise AuthenticationFailed(
+                        {
+                            'detail': (
+                                'Les comptes comptables ne peuvent pas se connecter '
+                                'à l\'application. Vous recevez les rapports par e-mail.'
+                            ),
+                        }
+                    )
+        data = super().validate(attrs)
+        return data
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -123,38 +134,41 @@ class UserSerializer(serializers.ModelSerializer):
         first_name = validated_data.get('first_name') or self._split_name(name)[0]
         last_name = validated_data.get('last_name') or self._split_name(name)[1]
         email = validated_data['email'].lower().strip()
+        role = request_data.get('role', UserRole.EMPLOYEE)
         user = User(
             username=email,
             email=email,
             first_name=first_name,
             last_name=last_name,
-            is_active=True,
+            is_active=False,
         )
         if password:
             validate_password(password)
             user.set_password(password)
         else:
-            # Invite-only: user signs in with Google using this authorized email
             user.set_unusable_password()
         user.save()
         EmployeeProfile.objects.create(
             user=user,
-            role=request_data.get('role', UserRole.EMPLOYEE),
+            role=role,
             department=request_data.get('department', ''),
             position=request_data.get('position', ''),
             avatar=request_data.get('avatar', ''),
-            email_verified=True,
+            email_verified=False,
         )
-        for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
-            LeaveBalance.objects.get_or_create(
-                user=user,
-                type=leave_type,
-                defaults={'total': total, 'used': 0, 'pending': 0},
+        if role != UserRole.COMPTABLE:
+            for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
+                LeaveBalance.objects.get_or_create(
+                    user=user,
+                    type=leave_type,
+                    defaults={'total': total, 'used': 0, 'pending': 0},
+                )
+            send_activation_email(user=user)
+        else:
+            send_comptable_welcome_email(
+                email=email,
+                name=user.get_full_name() or email,
             )
-        send_invite_email(
-            email=email,
-            name=user.get_full_name() or email,
-        )
         return user
 
     def update(self, instance, validated_data):
@@ -197,6 +211,28 @@ class MeSerializer(UserSerializer):
             'position',
             'avatar',
         )
+
+
+class MeUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    department = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    position = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    avatar = serializers.URLField(max_length=500, required=False, allow_blank=True)
+
+    def update(self, instance, validated_data):
+        name = validated_data.get('name')
+        if name is not None:
+            parts = name.strip().split(None, 1)
+            instance.first_name = parts[0] if parts else ''
+            instance.last_name = parts[1] if len(parts) > 1 else ''
+            instance.save(update_fields=['first_name', 'last_name'])
+
+        profile, _ = EmployeeProfile.objects.get_or_create(user=instance)
+        for field in ('department', 'position', 'avatar'):
+            if field in validated_data:
+                setattr(profile, field, validated_data[field] or '')
+        profile.save()
+        return instance
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -263,6 +299,19 @@ class EmailOnlySerializer(serializers.Serializer):
         return value.lower().strip()
 
 
+class ActivateAccountSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+
+class ValidateActivationTokenSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+
 class VerifyCodeSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.CharField(min_length=6, max_length=6)
@@ -300,10 +349,6 @@ class ResendCodeSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         return value.lower().strip()
-
-
-class GoogleAuthSerializer(serializers.Serializer):
-    id_token = serializers.CharField()
 
 
 class SetAnnualAllocationSerializer(serializers.Serializer):
@@ -399,6 +444,8 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     dates = LeaveDaySerializer(source='day_payload', many=True, required=False, allow_empty=False)
+    emergency = serializers.BooleanField(required=False, default=False)
+    employee_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = LeaveRequest
@@ -415,6 +462,8 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'half_day_period',
             'status',
             'reason',
+            'emergency',
+            'employee_balance',
             'created_at',
             'reviewed_by',
             'reviewed_by_name',
@@ -431,6 +480,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'reviewed_by',
             'reviewed_at',
             'review_comment',
+            'employee_balance',
         )
         extra_kwargs = {
             'reason': {'required': True, 'allow_blank': False},
@@ -455,6 +505,23 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             return None
         return display_name(obj.reviewed_by)
 
+    def get_employee_balance(self, obj):
+        balances = list(obj.employee.leave_balances.all())
+        match = next((item for item in balances if item.type == obj.type), None)
+        if match is None:
+            return {
+                'total': 0,
+                'used': 0,
+                'pending': 0,
+                'remaining': 0,
+            }
+        return {
+            'total': float(match.total),
+            'used': float(match.used),
+            'pending': float(match.pending),
+            'remaining': float(match.remaining),
+        }
+
     def create(self, validated_data):
         request = self.context['request']
         employee = request.user
@@ -462,6 +529,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             employee = User.objects.get(pk=self.initial_data['employee_id'])
         validated_data.pop('days', None)
         dates = validated_data.pop('day_payload', None)
+        emergency = validated_data.pop('emergency', False)
         if not dates:
             raise serializers.ValidationError(
                 {'dates': 'Sélectionnez au moins une journée.'}
@@ -471,11 +539,13 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             leave_type=validated_data['type'],
             dates=dates,
             reason=validated_data.get('reason', ''),
+            emergency=emergency,
         )
 
     def update(self, instance, validated_data):
         validated_data.pop('days', None)
         dates = validated_data.pop('day_payload', None)
+        emergency = validated_data.pop('emergency', instance.emergency)
         if dates is None:
             dates = instance.day_payload
         return services.update_leave_request(
@@ -483,6 +553,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             leave_type=validated_data.get('type', instance.type),
             dates=dates,
             reason=validated_data.get('reason', instance.reason or ''),
+            emergency=emergency,
         )
 
 
@@ -514,3 +585,4 @@ class TeamMemberSerializer(serializers.Serializer):
     is_on_holiday = serializers.BooleanField()
     leave_start = serializers.DateField(allow_null=True)
     leave_end = serializers.DateField(allow_null=True)
+    leave_days = serializers.FloatField(allow_null=True)

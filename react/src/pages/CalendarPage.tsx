@@ -54,7 +54,7 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="page-toolbar flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Calendrier</h1>
           <p className="text-muted-foreground mt-1">Consultez vos congés et la disponibilité de l'équipe</p>
@@ -118,7 +118,7 @@ export default function CalendarPage() {
               <div
                 key={index}
                 className={cn(
-                  "min-h-[100px] p-2 border-b border-r border-border transition-colors",
+                  "month-cal-cell min-h-[100px] p-2 border-b border-r border-border transition-colors",
                   !isCurrentMonth && "bg-muted/30",
                   isDayWeekend && isCurrentMonth && "bg-secondary/20",
                   "hover:bg-accent/50"

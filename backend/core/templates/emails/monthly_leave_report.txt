@@ -1,0 +1,44 @@
+HolidayHub — Rapport mensuel des congés
+{{ month_label }}
+========================================
+
+Période : {{ period_label }}
+
+SYNTHÈSE
+--------
+Employés concernés : {{ employees_count }}
+Nombre de congés   : {{ total_requests }}
+Total jours        : {{ total_days_display }}
+Absences +5 jours  : {{ long_leave_count }}
+
+{% if narrative_lines %}
+RÉCAPITULATIF
+-------------
+{% for line in narrative_lines %}
+{% if line.is_long %}* {% else %}- {% endif %}{{ line.narrative }}
+{% endfor %}
+{% else %}
+Aucun congé approuvé sur cette période.
+{% endif %}
+
+{% if leave_lines %}
+DÉTAIL DES CONGÉS
+-----------------
+{% for line in leave_lines %}
+{{ line.employee_name }} | {{ line.leave_type }} | {{ line.days_display }} | {{ line.dates_label }}{% if line.is_long %} [+5 jours]{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% if holidays %}
+JOURS FÉRIÉS
+------------
+{% for holiday in holidays %}
+{{ holiday.date_label }} — {{ holiday.name }}{% if holiday.is_religious %} (religieux){% endif %}
+
+{% endfor %}
+{% endif %}
+
+---
+Rapport généré le {{ generated_at }}
+Cet e-mail a été envoyé automatiquement par HolidayHub.

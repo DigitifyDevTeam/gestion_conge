@@ -65,10 +65,11 @@ class LeaveRequestAdmin(admin.ModelAdmin):
         'end_date',
         'days',
         'half_day_period',
+        'emergency',
         'status',
         'created_at',
     )
-    list_filter = ('status', 'type')
+    list_filter = ('status', 'type', 'emergency')
     search_fields = ('employee__username', 'employee__email', 'reason')
     raw_id_fields = ('employee', 'reviewed_by')
 

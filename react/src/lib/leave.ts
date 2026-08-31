@@ -1,4 +1,5 @@
 import {
+  addDays,
   differenceInCalendarDays,
   eachDayOfInterval,
   format,
@@ -6,6 +7,13 @@ import {
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { HalfDayPeriod, LeaveDay, LeaveReasonChoice } from '@/types/holiday';
+
+export const MIN_LEAVE_NOTICE_DAYS = 5;
+
+export function earliestLeaveDate(today: Date, emergency: boolean): Date {
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return emergency ? start : addDays(start, MIN_LEAVE_NOTICE_DAYS);
+}
 
 export const LEAVE_REASON_OPTIONS: { value: LeaveReasonChoice; label: string }[] = [
   { value: 'illness', label: 'Maladie' },
