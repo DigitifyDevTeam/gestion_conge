@@ -8,7 +8,30 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env')
+
+
+def _load_env_file() -> None:
+    """Load .env.local or .env.production based on .env.active (default: local)."""
+    active_file = BASE_DIR / '.env.active'
+    default_env = 'local'
+    if active_file.exists():
+        app_env = active_file.read_text(encoding='utf-8').strip().lower() or default_env
+    else:
+        app_env = os.environ.get('APP_ENV', default_env).strip().lower()
+
+    if app_env not in {'local', 'production'}:
+        app_env = default_env
+
+    env_path = BASE_DIR / f'.env.{app_env}'
+    if env_path.exists():
+        load_dotenv(env_path)
+    elif (BASE_DIR / '.env').exists():
+        load_dotenv(BASE_DIR / '.env')
+    else:
+        load_dotenv(BASE_DIR / f'.env.{app_env}.example')
+
+
+_load_env_file()
 
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',

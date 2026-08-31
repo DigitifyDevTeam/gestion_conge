@@ -281,7 +281,7 @@ class UserViewSet(viewsets.ModelViewSet):
             email_details=[
                 ('Nom', display_name(user)),
                 ('E-mail', user.email),
-                ('Rôle', ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
+                ('Rôle', services.ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
                 ('Département', profile.department if profile else '—'),
             ],
             email_cta_path='/admin/users',
@@ -299,7 +299,7 @@ class UserViewSet(viewsets.ModelViewSet):
             email_details=[
                 ('Nom', display_name(user)),
                 ('E-mail', user.email),
-                ('Rôle', ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
+                ('Rôle', services.ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
                 ('Département', profile.department if profile else '—'),
                 ('Actif', 'Oui' if user.is_active else 'Non'),
             ],

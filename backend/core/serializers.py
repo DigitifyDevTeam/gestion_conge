@@ -116,7 +116,7 @@ class UserSerializer(serializers.ModelSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError('A user with this email already exists.')
+            raise serializers.ValidationError('Un utilisateur avec cet email existe déjà.')
         return value
 
     def _split_name(self, name):

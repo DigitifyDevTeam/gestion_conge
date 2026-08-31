@@ -5,6 +5,8 @@
     "dev": "npm run dev --prefix react",
     "build": "npm run build --prefix react",
     "preview": "npm run preview --prefix react",
-    "lint": "npm run lint --prefix react"
+    "lint": "npm run lint --prefix react",
+    "env:local": "node scripts/switch-env.js local",
+    "env:prod": "node scripts/switch-env.js production"
   }
 }

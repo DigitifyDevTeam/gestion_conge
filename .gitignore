@@ -31,6 +31,9 @@ backend/staticfiles/
 backend/.env
 backend/.env.*
 !backend/.env.example
+!backend/.env.local.example
+!backend/.env.production.example
+!backend/.env.active.example
 react/.env
 react/.env.*
 !react/.env.example

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type UseFormSetError } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -76,6 +76,28 @@ const userSchema = z
 
 type UserFormData = z.infer<typeof userSchema>;
 
+const USER_FORM_FIELDS = ['name', 'email', 'role', 'department', 'position'] as const;
+
+function applyApiFieldErrors(err: unknown, setError: UseFormSetError<UserFormData>): boolean {
+  if (!(err instanceof ApiError) || !err.data || typeof err.data !== 'object') {
+    return false;
+  }
+
+  const data = err.data as Record<string, unknown>;
+  let applied = false;
+
+  for (const key of USER_FORM_FIELDS) {
+    const value = data[key];
+    if (value === undefined) continue;
+
+    const message = Array.isArray(value) ? String(value[0]) : String(value);
+    setError(key, { message });
+    applied = true;
+  }
+
+  return applied;
+}
+
 function roleLabel(role: UserRole): string {
   switch (role) {
     case 'admin':
@@ -122,6 +144,7 @@ export default function UserManagementPage() {
     handleSubmit,
     formState: { errors },
     reset,
+    setError,
     setValue,
     watch,
   } = useForm<UserFormData>({
@@ -159,6 +182,7 @@ export default function UserManagementPage() {
       reset();
     },
     onError: (err: unknown) => {
+      if (applyApiFieldErrors(err, setError)) return;
       toast({
         title: 'Erreur',
         description: err instanceof ApiError ? err.message : 'Création impossible.',
@@ -176,6 +200,7 @@ export default function UserManagementPage() {
       reset();
     },
     onError: (err: unknown) => {
+      if (applyApiFieldErrors(err, setError)) return;
       toast({
         title: 'Erreur',
         description: err instanceof ApiError ? err.message : 'Mise à jour impossible.',
