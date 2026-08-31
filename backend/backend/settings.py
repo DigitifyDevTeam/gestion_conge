@@ -1,7 +1,7 @@
 """
 Django settings for backend project.
 """
-
+#test#
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -143,3 +143,4 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'HolidayHub <noreply@holidayhub.local>',
 )
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+
