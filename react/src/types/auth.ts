@@ -8,6 +8,11 @@ export interface User {
   avatar?: string;
   department?: string;
   position?: string;
+  isActive?: boolean;
+}
+
+export interface CreateUserResult extends User {
+  invitationSent?: boolean;
 }
 
 export interface AuthState {

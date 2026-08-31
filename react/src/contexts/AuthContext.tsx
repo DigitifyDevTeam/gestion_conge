@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '@/types/auth';
 import {
+  activateAccountRequest,
   fetchMe,
   loginRequest,
   logoutRequest,
@@ -29,6 +30,10 @@ interface AuthContextType extends AuthState {
   verifyEmail: (
     email: string,
     code: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  activateAccount: (
+    token: string,
+    password: string,
   ) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   updateProfile: (payload: {
@@ -133,6 +138,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const activateAccount = async (token: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const loggedIn = await activateAccountRequest(token, password);
+      setUser(loggedIn);
+      setIsLoading(false);
+      return { ok: true };
+    } catch (err) {
+      setIsLoading(false);
+      const message =
+        err instanceof ApiError ? err.message : 'Activation impossible.';
+      return { ok: false, error: message };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     logoutRequest();
@@ -165,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     signup,
     verifyEmail,
+    activateAccount,
     logout,
     updateProfile,
     isAdmin,

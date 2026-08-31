@@ -95,10 +95,17 @@ case "$cmd" in
       echo "Missing $VENV_GUNICORN"
       exit 1
     fi
-    if [[ ! -f .env ]]; then
-      echo "Missing $APP_DIR/.env"
+    if [[ -f "$APP_DIR/.env.production" ]]; then
+      if [[ ! -f "$APP_DIR/.env.active" ]] || [[ "$(tr -d '\r\n' < "$APP_DIR/.env.active")" != "production" ]]; then
+        echo "production" > "$APP_DIR/.env.active"
+        echo "Set .env.active to production"
+      fi
+    fi
+    if [[ -z "${ENV_FILE:-}" || ! -f "$ENV_FILE" ]]; then
+      echo "Missing env file. Create backend/.env.production or backend/.env.active"
       exit 1
     fi
+    echo "Using env file: $ENV_FILE"
     echo "Starting gunicorn on $BIND ..."
     "$VENV_GUNICORN" \
       --daemon \
@@ -150,8 +157,25 @@ case "$cmd" in
   logs)
     tail -f "$LOG_FILE"
     ;;
+  config)
+    if [[ -z "${ENV_FILE:-}" || ! -f "$ENV_FILE" ]]; then
+      echo "Missing env file."
+      exit 1
+    fi
+    echo "Env file: $ENV_FILE"
+    if [[ -f "$APP_DIR/.env.active" ]]; then
+      echo "Active: $(tr -d '\r\n' < "$APP_DIR/.env.active")"
+    fi
+    "$APP_DIR/venv/bin/python" "$APP_DIR/manage.py" shell -c "
+from django.conf import settings
+print('DEBUG', settings.DEBUG)
+print('FRONTEND_URL', settings.FRONTEND_URL)
+print('EMAIL_BACKEND', settings.EMAIL_BACKEND)
+print('EMAIL_HOST_USER', settings.EMAIL_HOST_USER)
+"
+    ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|logs|check}"
+    echo "Usage: $0 {start|stop|restart|status|logs|check|config}"
     exit 1
     ;;
 esac

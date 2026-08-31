@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { activateAccountRequest, validateActivationTokenRequest } from '@/api/auth';
+import { validateActivationTokenRequest } from '@/api/auth';
 import { ApiError } from '@/api/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 const activateSchema = z
   .object({
@@ -27,6 +28,7 @@ export default function ActivateAccountPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
   const navigate = useNavigate();
+  const { activateAccount } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +64,12 @@ export default function ActivateAccountPage() {
     setError('');
     setSubmitting(true);
     try {
-      const user = await activateAccountRequest(token, data.password);
+      const result = await activateAccount(token, data.password);
+      if (!result.ok) {
+        setError(result.error || 'Activation impossible.');
+        return;
+      }
+      setInfo('Compte activé. Redirection…');
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Activation impossible.');

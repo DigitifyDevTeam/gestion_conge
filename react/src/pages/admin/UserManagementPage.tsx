@@ -3,7 +3,7 @@ import { useForm, type UseFormSetError } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Search, Edit, Trash2, UserPlus, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,7 +43,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { User, UserRole } from '@/types/auth';
-import { createUser, deleteUser, listUsers, updateUser } from '@/api/users';
+import { createUser, deleteUser, listUsers, resendUserInvitation, updateUser } from '@/api/users';
 import { ApiError } from '@/api/client';
 
 const userSchema = z
@@ -171,13 +171,25 @@ export default function UserManagementPage() {
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['leave-balances'] });
-      toast({
-        title: user.role === 'comptable' ? 'Comptable ajouté' : 'Utilisateur autorisé',
-        description:
-          user.role === 'comptable'
-            ? `${user.email} recevra le rapport mensuel des congés par e-mail.`
-            : `Une invitation avec lien d'activation a été envoyée à ${user.email}.`,
-      });
+      if (user.role === 'comptable') {
+        toast({
+          title: user.invitationSent === false ? 'Comptable ajouté (e-mail non envoyé)' : 'Comptable ajouté',
+          description:
+            user.invitationSent === false
+              ? `Le compte a été créé mais l'e-mail n'a pas pu être envoyé à ${user.email}. Vérifiez la configuration SMTP.`
+              : `${user.email} recevra le rapport mensuel des congés par e-mail.`,
+          variant: user.invitationSent === false ? 'destructive' : 'default',
+        });
+      } else {
+        toast({
+          title: user.invitationSent === false ? 'Utilisateur créé (e-mail non envoyé)' : 'Utilisateur autorisé',
+          description:
+            user.invitationSent === false
+              ? `Le compte a été créé mais l'invitation n'a pas pu être envoyée à ${user.email}. Utilisez « Renvoyer l'invitation » ou vérifiez la configuration SMTP.`
+              : `Une invitation avec lien d'activation a été envoyée à ${user.email}.`,
+          variant: user.invitationSent === false ? 'destructive' : 'default',
+        });
+      }
       setIsCreateDialogOpen(false);
       reset();
     },
@@ -204,6 +216,23 @@ export default function UserManagementPage() {
       toast({
         title: 'Erreur',
         description: err instanceof ApiError ? err.message : 'Mise à jour impossible.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: ({ id }: { id: string; email: string }) => resendUserInvitation(id),
+    onSuccess: (_data, { email }) => {
+      toast({
+        title: 'Invitation renvoyée',
+        description: `Un nouvel e-mail d'activation a été envoyé à ${email}.`,
+      });
+    },
+    onError: (err: unknown, { email }) => {
+      toast({
+        title: 'Envoi impossible',
+        description: err instanceof ApiError ? err.message : `Impossible d'envoyer l'invitation à ${email}.`,
         variant: 'destructive',
       });
     },
@@ -331,6 +360,17 @@ export default function UserManagementPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {user.role !== 'comptable' && user.isActive === false && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Renvoyer l'invitation"
+                              disabled={resendMutation.isPending}
+                              onClick={() => resendMutation.mutate({ id: user.id, email: user.email })}
+                            >
+                              <Mail className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"

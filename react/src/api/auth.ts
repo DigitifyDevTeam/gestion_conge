@@ -14,6 +14,7 @@ interface ApiUser {
   department?: string;
   position?: string;
   avatar?: string;
+  is_active?: boolean;
 }
 
 export function mapUser(u: ApiUser): User {
@@ -25,6 +26,7 @@ export function mapUser(u: ApiUser): User {
     department: u.department || undefined,
     position: u.position || undefined,
     avatar: u.avatar || undefined,
+    isActive: u.is_active,
   };
 }
 

@@ -44,6 +44,7 @@ from .serializers import (
     display_name,
 )
 from .account_activation import resolve_activation_user
+from .invites import send_activation_email, send_comptable_welcome_email
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,50 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             logger.exception('Failed to notify admins after user %s for %s', action, user.email)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        data = dict(serializer.data)
+        invitation_sent = getattr(serializer, 'invitation_sent', None)
+        if invitation_sent is not None:
+            data['invitation_sent'] = invitation_sent
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=True, methods=['post'], url_path='resend-invitation')
+    def resend_invitation(self, request, pk=None):
+        user = self.get_object()
+        profile = getattr(user, 'profile', None)
+        role = profile.role if profile else UserRole.EMPLOYEE
+
+        if role == UserRole.COMPTABLE:
+            sent = send_comptable_welcome_email(
+                email=user.email,
+                name=display_name(user),
+            )
+        elif user.is_active:
+            return Response(
+                {'detail': 'Ce compte est déjà activé.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        else:
+            sent = send_activation_email(user=user)
+
+        if not sent:
+            return Response(
+                {
+                    'detail': (
+                        'Impossible d\'envoyer l\'e-mail. '
+                        'Vérifiez la configuration SMTP du serveur.'
+                    ),
+                    'invitation_sent': False,
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({'invitation_sent': True})
 
     def perform_create(self, serializer):
         user = serializer.save()

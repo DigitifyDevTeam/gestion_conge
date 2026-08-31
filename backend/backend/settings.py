@@ -30,6 +30,13 @@ def _load_env_file() -> None:
     else:
         load_dotenv(BASE_DIR / f'.env.{app_env}.example')
 
+    # Safety net: never keep a localhost frontend URL in production mode.
+    debug = os.environ.get('DJANGO_DEBUG', '1') == '1'
+    frontend = os.environ.get('FRONTEND_URL', '')
+    prod_env = BASE_DIR / '.env.production'
+    if not debug and prod_env.exists() and 'localhost' in frontend:
+        load_dotenv(prod_env, override=True)
+
 
 _load_env_file()
 

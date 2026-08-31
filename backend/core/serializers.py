@@ -163,9 +163,9 @@ class UserSerializer(serializers.ModelSerializer):
                     type=leave_type,
                     defaults={'total': total, 'used': 0, 'pending': 0},
                 )
-            send_activation_email(user=user)
+            self.invitation_sent = send_activation_email(user=user)
         else:
-            send_comptable_welcome_email(
+            self.invitation_sent = send_comptable_welcome_email(
                 email=email,
                 name=user.get_full_name() or email,
             )
