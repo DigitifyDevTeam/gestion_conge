@@ -182,7 +182,7 @@ export async function downloadLeavePlanningExcel({
   const ExcelJSModule = await import('exceljs');
   const ExcelJS = ExcelJSModule.default ?? ExcelJSModule;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'HolidayHub';
+  workbook.creator = 'Gestion de congé';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(`Planning ${year}`, {

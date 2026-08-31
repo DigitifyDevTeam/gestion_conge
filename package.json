@@ -1,0 +1,10 @@
+{
+  "name": "gestion-conges",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix react",
+    "build": "npm run build --prefix react",
+    "preview": "npm run preview --prefix react",
+    "lint": "npm run lint --prefix react"
+  }
+}

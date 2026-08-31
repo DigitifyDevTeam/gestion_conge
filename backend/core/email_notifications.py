@@ -141,7 +141,7 @@ def send_monthly_leave_report_email(*, report) -> int:
         logger.warning('No comptable recipients found for monthly leave report.')
         return 0
 
-    subject = f'HolidayHub — Rapport mensuel des congés ({report.month_label})'
+    subject = f'Gestion de congé — Rapport mensuel des congés ({report.month_label})'
 
     leave_lines = [
         {

@@ -75,7 +75,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate }: Sidebar
           {showLabels && (
             <div className="flex items-center gap-2">
               <span className="font-semibold text-foreground text-lg tracking-tight">
-                HolidayHub
+                Gestion de congé
               </span>
               {isAdmin() && (
                 <Badge variant="default" className="text-xs">

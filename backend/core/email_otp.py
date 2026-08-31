@@ -91,24 +91,24 @@ def verify_otp(email: str, purpose: str, code: str, *, consume: bool = True) -> 
 def send_otp_email(*, email: str, code: str, purpose: str, name: str = '') -> None:
     display_name = name or email
     if purpose == EmailOTPPurpose.SIGNUP:
-        subject = 'Confirmez votre compte HolidayHub'
+        subject = 'Confirmez votre compte Gestion de congé'
         body = (
             f'Bonjour {display_name},\n\n'
-            f'Merci de vous être inscrit sur HolidayHub.\n'
+            f'Merci de vous être inscrit sur Gestion de congé.\n'
             f'Votre code de confirmation est : {code}\n\n'
             f'Ce code expire dans {OTP_TTL_MINUTES} minutes.\n'
             f'Si vous n\'avez pas créé de compte, ignorez cet e-mail.\n\n'
-            f'— L\'équipe HolidayHub'
+            f'— L\'équipe Gestion de congé'
         )
     else:
-        subject = 'Réinitialisation de votre mot de passe HolidayHub'
+        subject = 'Réinitialisation de votre mot de passe Gestion de congé'
         body = (
             f'Bonjour {display_name},\n\n'
             f'Vous avez demandé à réinitialiser votre mot de passe.\n'
             f'Votre code de réinitialisation est : {code}\n\n'
             f'Ce code expire dans {OTP_TTL_MINUTES} minutes.\n'
             f'Si vous n\'êtes pas à l\'origine de cette demande, ignorez cet e-mail.\n\n'
-            f'— L\'équipe HolidayHub'
+            f'— L\'équipe Gestion de congé'
         )
 
     send_mail(

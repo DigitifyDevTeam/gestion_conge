@@ -177,7 +177,7 @@ export default function LoginPage() {
 
   const title =
     mode === 'login'
-      ? 'Se connecter à HolidayHub'
+      ? 'Se connecter à Gestion de congé'
       : mode === 'verify'
         ? 'Confirmez votre e-mail'
         : mode === 'forgot'
@@ -194,7 +194,7 @@ export default function LoginPage() {
             </div>
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">HolidayHub</h1>
+            <h1 className="text-3xl font-bold text-foreground">Gestion de congé</h1>
             <p className="text-muted-foreground mt-2">{title}</p>
           </div>
         </div>

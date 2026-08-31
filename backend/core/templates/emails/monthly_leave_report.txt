@@ -1,4 +1,4 @@
-HolidayHub — Rapport mensuel des congés
+Gestion de congé — Rapport mensuel des congés
 {{ month_label }}
 ========================================
 
@@ -41,4 +41,4 @@ JOURS FÉRIÉS
 
 ---
 Rapport généré le {{ generated_at }}
-Cet e-mail a été envoyé automatiquement par HolidayHub.
+Cet e-mail a été envoyé automatiquement par Gestion de congé.

@@ -23,7 +23,7 @@ def send_activation_email(*, user) -> None:
     expiry_days = max(ACTIVATION_MAX_AGE_SECONDS // 86400, 1)
     sent_at = timezone.localtime(timezone.now()).strftime('%d/%m/%Y à %H:%M')
 
-    subject = 'HolidayHub — activez votre compte'
+    subject = 'Gestion de congé — activez votre compte'
     context = {
         'subject': subject,
         'name': name,
@@ -50,15 +50,15 @@ def send_activation_email(*, user) -> None:
 def send_comptable_welcome_email(*, email: str, name: str = '') -> None:
     """Notify a comptable that they will receive monthly leave reports."""
     display_name = (name or '').strip() or email
-    subject = 'HolidayHub — compte comptable configuré'
+    subject = 'Gestion de congé — compte comptable configuré'
     body = (
         f'Bonjour {display_name},\n\n'
-        f'Un administrateur vous a ajouté comme comptable sur HolidayHub.\n\n'
+        f'Un administrateur vous a ajouté comme comptable sur Gestion de congé.\n\n'
         f'Vous recevrez automatiquement un e-mail récapitulatif chaque mois '
         f'avec la liste des congés approuvés et des jours fériés.\n\n'
         f'Vous n\'avez pas besoin de vous connecter à l\'application.\n\n'
         f'Si vous n\'êtes pas concerné(e), ignorez cet e-mail.\n\n'
-        f'— L\'équipe HolidayHub'
+        f'— L\'équipe Gestion de congé'
     )
     send_mail(
         subject=subject,

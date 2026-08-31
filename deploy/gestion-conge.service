@@ -1,0 +1,19 @@
+[Unit]
+Description=Gestion congés Django API
+After=network.target mysql.service mariadb.service
+
+[Service]
+User=rh
+Group=rh
+WorkingDirectory=/home/rh.digitify.fr/gestion_conge/backend
+Environment="PATH=/home/rh.digitify.fr/gestion_conge/backend/venv/bin"
+ExecStart=/home/rh.digitify.fr/gestion_conge/backend/venv/bin/gunicorn \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    backend.wsgi:application
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

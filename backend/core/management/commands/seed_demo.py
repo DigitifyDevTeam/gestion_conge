@@ -171,7 +171,7 @@ class Command(BaseCommand):
         if not Notification.objects.filter(user=sarah).exists():
             Notification.objects.create(
                 user=sarah,
-                title='Welcome to HolidayHub',
+                title='Bienvenue sur Gestion de congé',
                 message='Your leave balances have been initialized for the year.',
                 type=NotificationType.INFO,
             )

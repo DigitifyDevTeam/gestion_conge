@@ -6,6 +6,9 @@ env/
 __pycache__/
 *.py[cod]
 .DS_Store
+venv/
+backend/venv/
+backend/staticfiles/
 
 # testing
 /coverage
@@ -15,13 +18,20 @@ __pycache__/
 
 # misc
 .DS_Store
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 **/client_secret*.json
+
+# Environment files — NEVER commit secrets (local .env is fine, git ignores it)
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
+react/.env
+react/.env.*
+!react/.env.example
 
 npm-debug.log*
 yarn-debug.log*

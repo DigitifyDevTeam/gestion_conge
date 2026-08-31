@@ -81,7 +81,7 @@ export default function ActivateAccountPage() {
             </div>
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">HolidayHub</h1>
+            <h1 className="text-3xl font-bold text-foreground">Gestion de congé</h1>
             <p className="text-muted-foreground mt-2">Activation de votre compte</p>
           </div>
         </div>

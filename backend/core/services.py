@@ -136,7 +136,7 @@ def notify_admins(
     if email_action and email_category:
         actor_name = _person_name(email_actor) if email_actor else ''
         send_admin_alert_email(
-            subject=email_subject or f'HolidayHub — {title}',
+            subject=email_subject or f'Gestion de congé — {title}',
             title=title,
             message=message,
             action=email_action,

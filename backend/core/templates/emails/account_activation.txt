@@ -1,9 +1,9 @@
-HolidayHub — Activez votre compte
+Gestion de congé — Activez votre compte
 ==================================
 
 Bonjour {{ name }},
 
-Un administrateur a créé votre compte HolidayHub pour l'adresse {{ email }}.
+Un administrateur a créé votre compte Gestion de congé pour l'adresse {{ email }}.
 
 Activez votre compte et choisissez votre mot de passe en visitant ce lien :
 {{ activation_url }}
@@ -14,4 +14,4 @@ Si vous n'êtes pas concerné(e), ignorez cet e-mail.
 
 ---
 Invitation envoyée le {{ sent_at }}
-Cet e-mail a été envoyé automatiquement par HolidayHub.
+Cet e-mail a été envoyé automatiquement par Gestion de congé.
