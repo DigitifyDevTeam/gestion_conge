@@ -27,6 +27,5 @@ python manage.py collectstatic --noinput
 
 echo ""
 echo "Done. Start Gunicorn (no sudo):"
-echo "  bash ../deploy/gunicorn-ctl.sh start"
-echo "  # or user systemd: see deploy/gestion-conge.user.service"
+echo "  cd backend && bash gunicorn-ctl.sh start"
 echo "  python manage.py createsuperuser"
