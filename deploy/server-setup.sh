@@ -26,6 +26,7 @@ python manage.py migrate
 python manage.py collectstatic --noinput
 
 echo ""
-echo "Done. Start Gunicorn (no sudo):"
+echo "Done. Start Gunicorn on port 8001 (no sudo):"
 echo "  cd backend && bash gunicorn-ctl.sh start"
+echo "  # Nginx proxy_pass must point to http://127.0.0.1:8001"
 echo "  python manage.py createsuperuser"

@@ -1,19 +1,43 @@
 #!/usr/bin/env bash
-# Start/stop Gunicorn without sudo. Run from anywhere: bash gunicorn-ctl.sh start
+# Start/stop Gunicorn without sudo. Run from backend/: bash gunicorn-ctl.sh start
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$APP_DIR/gunicorn.pid"
 LOG_FILE="$APP_DIR/gunicorn.log"
 VENV_GUNICORN="$APP_DIR/venv/bin/gunicorn"
-BIND="${GUNICORN_BIND:-127.0.0.1:8000}"
 
 cmd="${1:-start}"
 
 cd "$APP_DIR"
 
+if [[ -f .env ]]; then
+  _gb=$(grep -E '^GUNICORN_BIND=' .env | tail -1 | cut -d= -f2- | tr -d '\r')
+  if [[ -n "$_gb" ]]; then
+    export GUNICORN_BIND="$_gb"
+  fi
+fi
+BIND="${GUNICORN_BIND:-127.0.0.1:8001}"
+
+port_from_bind() {
+  echo "${BIND##*:}"
+}
+
+host_from_bind() {
+  echo "${BIND%%:*}"
+}
+
+port_in_use() {
+  local port="$1"
+  ss -tln 2>/dev/null | awk -v p=":${port}" '$4 ~ p { found=1 } END { exit !found }'
+}
+
 is_running() {
   [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+responds() {
+  curl -sf -o /dev/null -m 2 "http://$BIND/api/" 2>/dev/null
 }
 
 show_log_tail() {
@@ -24,7 +48,34 @@ show_log_tail() {
 }
 
 case "$cmd" in
+  check)
+    port="$(port_from_bind)"
+    echo "Configured bind: $BIND"
+    if port_in_use "$port"; then
+      echo "Port $port is IN USE."
+      echo "Test API: curl http://$BIND/api/"
+      curl -s "http://$BIND/api/" || true
+      echo ""
+    else
+      echo "Port $port is free."
+    fi
+    if is_running; then
+      echo "Our gunicorn pid: $(cat "$PID_FILE")"
+    else
+      echo "Our gunicorn is not running (no valid pid file)."
+    fi
+    ;;
   start)
+    port="$(port_from_bind)"
+    if port_in_use "$port"; then
+      echo "ERROR: Port $port is already in use."
+      echo "Another process owns it (maybe an old gunicorn)."
+      echo ""
+      echo "Try:"
+      echo "  ss -tln | grep 8001"
+      echo "  GUNICORN_BIND=127.0.0.1:8002 bash gunicorn-ctl.sh start"
+      exit 1
+    fi
     if is_running; then
       echo "Gunicorn already running (pid $(cat "$PID_FILE"))"
       exit 0
@@ -49,10 +100,12 @@ case "$cmd" in
       --capture-output \
       backend.wsgi:application
     sleep 2
-    if is_running; then
+    if is_running && responds; then
       echo "Gunicorn started (pid $(cat "$PID_FILE"), bind $BIND)"
+      echo "Nginx must proxy to: http://$BIND"
     else
-      echo "Gunicorn failed to start."
+      echo "Gunicorn failed to start or is not responding."
+      rm -f "$PID_FILE"
       show_log_tail
       exit 1
     fi
@@ -73,10 +126,10 @@ case "$cmd" in
     "$0" start
     ;;
   status)
-    if is_running; then
+    if is_running && responds; then
       echo "Gunicorn running (pid $(cat "$PID_FILE"), bind $BIND)"
     else
-      echo "Gunicorn not running"
+      echo "Gunicorn not running or not responding on $BIND"
       show_log_tail
       exit 1
     fi
@@ -85,7 +138,7 @@ case "$cmd" in
     tail -f "$LOG_FILE"
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|logs}"
+    echo "Usage: $0 {start|stop|restart|status|logs|check}"
     exit 1
     ;;
 esac
