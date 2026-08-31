@@ -37,7 +37,10 @@ is_running() {
 }
 
 responds() {
-  curl -sf -o /dev/null -m 2 "http://$BIND/api/" 2>/dev/null
+  # Django returns 404 on /api/ — any HTTP response means gunicorn is up
+  local code
+  code=$(curl -s -o /dev/null -m 3 -w "%{http_code}" "http://$BIND/api/" 2>/dev/null || echo "000")
+  [[ "$code" != "000" && "$code" != "000000" ]]
 }
 
 show_log_tail() {
