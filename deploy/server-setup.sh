@@ -10,6 +10,13 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# Fix UTF-16 requirements.txt (Windows/OneDrive sometimes saves with BOM)
+if grep -q $'\x00' requirements.txt 2>/dev/null; then
+  echo "Converting requirements.txt from UTF-16 to UTF-8..."
+  iconv -f UTF-16LE -t UTF-8 requirements.txt > requirements.txt.utf8
+  mv requirements.txt.utf8 requirements.txt
+fi
+
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
@@ -18,5 +25,8 @@ pip install -r requirements.txt
 python manage.py migrate
 python manage.py collectstatic --noinput
 
-echo "Done. Test with:"
-echo "  gunicorn --bind 127.0.0.1:8000 backend.wsgi:application"
+echo ""
+echo "Done. Start Gunicorn (no sudo):"
+echo "  bash ../deploy/gunicorn-ctl.sh start"
+echo "  # or user systemd: see deploy/gestion-conge.user.service"
+echo "  python manage.py createsuperuser"

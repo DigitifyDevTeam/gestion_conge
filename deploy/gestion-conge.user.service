@@ -1,0 +1,17 @@
+[Unit]
+Description=Gestion congés Django API
+After=network.target
+
+[Service]
+WorkingDirectory=%h/gestion_conge/backend
+Environment=PATH=%h/gestion_conge/backend/venv/bin
+ExecStart=%h/gestion_conge/backend/venv/bin/gunicorn \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    backend.wsgi:application
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
