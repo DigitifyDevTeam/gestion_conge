@@ -16,7 +16,10 @@ if [[ ! -f "$SOURCE" ]]; then
   EXAMPLE="$BACKEND/.env.$ENV_NAME.example"
   if [[ -f "$EXAMPLE" ]]; then
     cp "$EXAMPLE" "$SOURCE"
-    echo "Created $SOURCE from example — edit it with your values."
+    echo "Created $SOURCE from example."
+    if [[ "$ENV_NAME" == "production" ]]; then
+      echo "IMPORTANT: Edit backend/.env.production with real DB password and secrets before running Django!"
+    fi
   else
     echo "Missing $SOURCE"
     exit 1

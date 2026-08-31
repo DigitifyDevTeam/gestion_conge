@@ -5,9 +5,15 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-$HOME/gestion_conge/backend}"
 cd "$APP_DIR"
 
-if [[ ! -f .env ]]; then
-  echo "Missing .env — copy backend/.env.example to backend/.env and fill values first."
+if [[ ! -f .env.production ]]; then
+  echo "Missing .env.production — copy backend/.env.production.example and fill values first."
   exit 1
+fi
+
+echo "production" > .env.active
+if [[ ! -f .env ]]; then
+  cp .env.production .env
+  echo "Created .env from .env.production"
 fi
 
 # Fix UTF-16 requirements.txt (Windows/OneDrive sometimes saves with BOM)

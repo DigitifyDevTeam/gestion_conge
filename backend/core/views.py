@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 from django.contrib.auth.models import User
@@ -44,6 +45,8 @@ from .serializers import (
 )
 from .account_activation import resolve_activation_user
 from . import services
+
+logger = logging.getLogger(__name__)
 
 
 class EmailTokenObtainPairView(TokenObtainPairView):
@@ -269,41 +272,54 @@ class UserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(profile__role=role)
         return qs
 
+    def _notify_user_change(
+        self,
+        *,
+        title: str,
+        message: str,
+        action: str,
+        user: User,
+        extra_details: list[tuple[str, str]] | None = None,
+    ) -> None:
+        profile = getattr(user, 'profile', None)
+        details = [
+            ('Nom', display_name(user)),
+            ('E-mail', user.email),
+            ('Rôle', services.ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
+            ('Département', profile.department if profile else '—'),
+        ]
+        if extra_details:
+            details.extend(extra_details)
+        try:
+            services.notify_admins(
+                title,
+                message,
+                email_action=action,
+                email_category='user',
+                email_actor=self.request.user,
+                email_details=details,
+                email_cta_path='/admin/users',
+            )
+        except Exception:
+            logger.exception('Failed to notify admins after user %s for %s', action, user.email)
+
     def perform_create(self, serializer):
         user = serializer.save()
-        profile = getattr(user, 'profile', None)
-        services.notify_admins(
-            'Nouvel utilisateur',
-            f'{display_name(user)} ({user.email}) a été ajouté au système.',
-            email_action='created',
-            email_category='user',
-            email_actor=self.request.user,
-            email_details=[
-                ('Nom', display_name(user)),
-                ('E-mail', user.email),
-                ('Rôle', services.ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
-                ('Département', profile.department if profile else '—'),
-            ],
-            email_cta_path='/admin/users',
+        self._notify_user_change(
+            title='Nouvel utilisateur',
+            message=f'{display_name(user)} ({user.email}) a été ajouté au système.',
+            action='created',
+            user=user,
         )
 
     def perform_update(self, serializer):
         user = serializer.save()
-        profile = getattr(user, 'profile', None)
-        services.notify_admins(
-            'Utilisateur modifié',
-            f'{display_name(user)} ({user.email}) a été mis à jour.',
-            email_action='updated',
-            email_category='user',
-            email_actor=self.request.user,
-            email_details=[
-                ('Nom', display_name(user)),
-                ('E-mail', user.email),
-                ('Rôle', services.ROLE_FR.get(profile.role, profile.role) if profile else 'Employé'),
-                ('Département', profile.department if profile else '—'),
-                ('Actif', 'Oui' if user.is_active else 'Non'),
-            ],
-            email_cta_path='/admin/users',
+        self._notify_user_change(
+            title='Utilisateur modifié',
+            message=f'{display_name(user)} ({user.email}) a été mis à jour.',
+            action='updated',
+            user=user,
+            extra_details=[('Actif', 'Oui' if user.is_active else 'Non')],
         )
 
     def perform_destroy(self, instance):

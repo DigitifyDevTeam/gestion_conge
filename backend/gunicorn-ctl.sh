@@ -12,8 +12,22 @@ cmd="${cmd//$'\r'/}"
 
 cd "$APP_DIR"
 
-if [[ -f .env ]]; then
-  _gb=$(grep -E '^GUNICORN_BIND=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true)
+_resolve_env_file() {
+  local active_file="$APP_DIR/.env.active"
+  local app_env="local"
+  if [[ -f "$active_file" ]]; then
+    app_env=$(tr -d '\r\n' < "$active_file")
+  fi
+  if [[ -f "$APP_DIR/.env.$app_env" ]]; then
+    echo "$APP_DIR/.env.$app_env"
+  elif [[ -f "$APP_DIR/.env" ]]; then
+    echo "$APP_DIR/.env"
+  fi
+}
+
+ENV_FILE="$(_resolve_env_file)"
+if [[ -n "${ENV_FILE:-}" && -f "$ENV_FILE" ]]; then
+  _gb=$(grep -E '^GUNICORN_BIND=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true)
   if [[ -n "${_gb:-}" ]]; then
     export GUNICORN_BIND="$_gb"
   fi

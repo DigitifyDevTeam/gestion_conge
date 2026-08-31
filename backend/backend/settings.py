@@ -168,19 +168,25 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# Email — set EMAIL_HOST* for real SMTP; console backend in local DEBUG by default
-EMAIL_BACKEND = os.environ.get(
-    'EMAIL_BACKEND',
-    'django.core.mail.backends.console.EmailBackend'
-    if DEBUG
-    else 'django.core.mail.backends.smtp.EmailBackend',
-)
+# Email — console in local DEBUG unless SMTP credentials are provided
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', '1') == '1'
-DEFAULT_FROM_EMAIL = os.environ.get(
-    'DEFAULT_FROM_EMAIL',
-    'Gestion de congé <noreply@gestion-conges.local>',
-)
+_explicit_email_backend = os.environ.get('EMAIL_BACKEND', '').strip()
+if _explicit_email_backend:
+    EMAIL_BACKEND = _explicit_email_backend
+elif EMAIL_HOST_USER:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+elif DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+_default_from = os.environ.get('DEFAULT_FROM_EMAIL', '').strip()
+if _default_from:
+    DEFAULT_FROM_EMAIL = _default_from
+elif EMAIL_HOST_USER:
+    DEFAULT_FROM_EMAIL = f'Gestion de congé <{EMAIL_HOST_USER}>'
+else:
+    DEFAULT_FROM_EMAIL = 'Gestion de congé <noreply@gestion-conges.local>'
