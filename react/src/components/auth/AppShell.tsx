@@ -1,11 +1,17 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginPage from '@/pages/LoginPage';
+import ActivateAccountPage from '@/pages/ActivateAccountPage';
 
 export function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [params] = useSearchParams();
+
+  if (params.get('token')) {
+    return <ActivateAccountPage />;
+  }
 
   if (isLoading) {
     return (

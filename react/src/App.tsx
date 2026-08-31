@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppShell, AdminOnly } from "@/components/auth/AppShell";
 import ActivateAccountPage from "./pages/ActivateAccountPage";
@@ -22,6 +22,11 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function IndexHtmlRedirect() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: '/', search: location.search }} replace />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="gestion-conges-theme">
@@ -32,6 +37,7 @@ const App = () => (
           <BrowserRouter>
           <Routes>
             <Route path="/activate" element={<ActivateAccountPage />} />
+            <Route path="/index.html" element={<IndexHtmlRedirect />} />
 
             {/* Legacy URLs */}
             <Route path="/login" element={<Navigate to="/" replace />} />

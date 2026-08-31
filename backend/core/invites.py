@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def _activation_url(user) -> str:
     token = make_activation_token(user)
     frontend = settings.FRONTEND_URL.rstrip('/')
-    return f'{frontend}/activate?token={quote(token)}'
+    return f'{frontend}/?token={quote(token)}'
 
 
 def send_activation_email(*, user) -> bool:

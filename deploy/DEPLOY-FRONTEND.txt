@@ -1,13 +1,32 @@
-# Deploy frontend to public_html (includes api-proxy.php for API without Nginx root access)
+# Deploy frontend to public_html
+#
+# The nginx 404 on https://rh.digitify.fr means public_html has no React build.
+# Gunicorn only serves /api — nginx must serve index.html from public_html.
 #
 # On your PC:
 #   npm run build
-#   Copy react/dist/* → server ~/public_html/
+#   Copy EVERY file inside react/dist/ into the server document root:
+#     ~/public_html/   (Virtualmin: /home/rh.digitify.fr/public_html/)
 #
-# On the server, ensure Gunicorn is running:
-#   cd ~/gestion_conge/backend && bash gunicorn-ctl.sh start
+# On the server, confirm:
+#   ls ~/public_html/index.html
+#   ls ~/public_html/assets
 #
-# Test:
-#   curl -k https://rh.digitify.fr/api-proxy.php/auth/token/ -X POST \
-#     -H "Content-Type: application/json" \
-#     -d '{"username":"admin2406","password":"YOUR_PASSWORD"}'
+# Nginx (Virtualmin → Server Configuration → Nginx Directives):
+#   index index.html;
+#   location / {
+#       try_files $uri $uri/ /index.html;
+#   }
+#   location /api/ {
+#       proxy_pass http://127.0.0.1:8001;
+#       proxy_set_header Host $host;
+#       proxy_set_header X-Real-IP $remote_addr;
+#       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#       proxy_set_header X-Forwarded-Proto $scheme;
+#   }
+#
+# Then:
+#   cd ~/gestion_conge/backend && bash gunicorn-ctl.sh restart
+#
+# Activation emails use https://rh.digitify.fr/?token=...
+# After deploying, resend the invitation from /users.
