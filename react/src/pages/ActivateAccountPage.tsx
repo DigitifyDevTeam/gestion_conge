@@ -63,7 +63,7 @@ export default function ActivateAccountPage() {
     setSubmitting(true);
     try {
       const user = await activateAccountRequest(token, data.password);
-      navigate(user.role === 'admin' ? '/admin' : '/');
+      navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Activation impossible.');
     } finally {
@@ -190,7 +190,7 @@ export default function ActivateAccountPage() {
                 <button
                   type="button"
                   className="text-primary font-medium hover:underline"
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/')}
                 >
                   Se connecter
                 </button>

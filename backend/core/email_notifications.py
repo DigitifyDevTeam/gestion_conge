@@ -67,7 +67,7 @@ def send_admin_alert_email(
     category: str,
     actor_name: str = '',
     details: list[tuple[str, str]] | None = None,
-    cta_path: str = '/admin',
+    cta_path: str = '/',
     cta_label: str = 'Ouvrir le tableau de bord',
     exclude_user=None,
 ) -> int:

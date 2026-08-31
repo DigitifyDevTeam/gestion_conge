@@ -36,7 +36,7 @@ export function NotificationBell() {
       markReadMutation.mutate(id);
     }
     setOpen(false);
-    navigate(isAdmin() ? '/admin/requests' : '/requests');
+    navigate('/requests');
   };
 
   const markAllRead = async () => {

@@ -74,7 +74,7 @@ export default function LoginPage() {
         /* ignore */
       }
     }
-    navigate(role === 'admin' ? '/admin' : '/');
+    navigate('/');
   };
 
   const loginForm = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });

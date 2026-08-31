@@ -26,7 +26,7 @@ export function Header({ onNewRequest, onMenuClick }: HeaderProps) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/');
   };
 
   const getInitials = (name: string) => {

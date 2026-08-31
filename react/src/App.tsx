@@ -5,21 +5,17 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { AppLayout } from "@/components/layout/AppLayout";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import LoginPage from "./pages/LoginPage";
+import { AppShell, AdminOnly } from "@/components/auth/AppShell";
 import ActivateAccountPage from "./pages/ActivateAccountPage";
-import Dashboard from "./pages/Dashboard";
+import HomeDashboard from "./pages/HomeDashboard";
 import CalendarPage from "./pages/CalendarPage";
-import RequestsPage from "./pages/RequestsPage";
+import RoleRequestsPage from "./pages/RoleRequestsPage";
 import HistoryPage from "./pages/HistoryPage";
 import TeamPage from "./pages/TeamPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import PublicHolidaysPage from "./pages/PublicHolidaysPage";
-import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagementPage from "./pages/admin/UserManagementPage";
-import AllRequestsPage from "./pages/admin/AllRequestsPage";
 import BalanceManagementPage from "./pages/admin/BalanceManagementPage";
 import ReportsPage from "./pages/admin/ReportsPage";
 import NotFound from "./pages/NotFound";
@@ -35,37 +31,52 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
           <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<LoginPage />} />
             <Route path="/activate" element={<ActivateAccountPage />} />
-            
-            {/* Protected Employee Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/calendar" element={<CalendarPage />} />
-                <Route path="/requests" element={<RequestsPage />} />
-                <Route path="/history" element={<HistoryPage />} />
-                <Route path="/team" element={<TeamPage />} />
-                <Route path="/approvals" element={<Navigate to="/requests" replace />} />
-                <Route path="/public-holidays" element={<PublicHolidaysPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/notifications" element={<NotificationsPage />} />
-              </Route>
+
+            {/* Legacy URLs */}
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/admin" element={<Navigate to="/" replace />} />
+            <Route path="/admin/users" element={<Navigate to="/users" replace />} />
+            <Route path="/admin/requests" element={<Navigate to="/requests" replace />} />
+            <Route path="/admin/balances" element={<Navigate to="/balances" replace />} />
+            <Route path="/admin/reports" element={<Navigate to="/reports" replace />} />
+
+            <Route element={<AppShell />}>
+              <Route path="/" element={<HomeDashboard />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/requests" element={<RoleRequestsPage />} />
+              <Route path="/history" element={<HistoryPage />} />
+              <Route path="/team" element={<TeamPage />} />
+              <Route path="/approvals" element={<Navigate to="/requests" replace />} />
+              <Route path="/public-holidays" element={<PublicHolidaysPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route
+                path="/users"
+                element={(
+                  <AdminOnly>
+                    <UserManagementPage />
+                  </AdminOnly>
+                )}
+              />
+              <Route
+                path="/balances"
+                element={(
+                  <AdminOnly>
+                    <BalanceManagementPage />
+                  </AdminOnly>
+                )}
+              />
+              <Route
+                path="/reports"
+                element={(
+                  <AdminOnly>
+                    <ReportsPage />
+                  </AdminOnly>
+                )}
+              />
             </Route>
 
-            {/* Protected Admin Routes */}
-            <Route element={<ProtectedRoute requireAdmin />}>
-              <Route element={<AppLayout />}>
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/users" element={<UserManagementPage />} />
-                <Route path="/admin/requests" element={<AllRequestsPage />} />
-                <Route path="/admin/balances" element={<BalanceManagementPage />} />
-                <Route path="/admin/reports" element={<ReportsPage />} />
-              </Route>
-            </Route>
-
-            {/* Fallback */}
             <Route path="*" element={<NotFound />} />
           </Routes>
           </BrowserRouter>

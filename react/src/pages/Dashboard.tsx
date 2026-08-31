@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BalanceCard } from '@/components/dashboard/BalanceCard';
 import { NextPublicHolidayCard } from '@/components/dashboard/NextPublicHolidayCard';
@@ -14,14 +12,7 @@ import { listPublicHolidays } from '@/api/publicHolidays';
 import { listTeam } from '@/api/team';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
-
-  useEffect(() => {
-    if (isAdmin()) {
-      navigate('/admin', { replace: true });
-    }
-  }, [isAdmin, navigate]);
 
   const { data: holidayBalances = [] } = useQuery({
     queryKey: ['leave-balances', 'me'],

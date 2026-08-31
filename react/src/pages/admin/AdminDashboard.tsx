@@ -98,28 +98,28 @@ export default function AdminDashboard() {
       title: 'Gérer les utilisateurs',
       description: 'Créer et modifier les comptes employés',
       icon: Users,
-      onClick: () => navigate('/admin/users'),
+      onClick: () => navigate('/users'),
       color: 'text-primary',
     },
     {
       title: 'Toutes les demandes',
       description: 'Voir et gérer toutes les demandes',
       icon: Clock,
-      onClick: () => navigate('/admin/requests'),
+      onClick: () => navigate('/requests'),
       color: 'text-warning',
     },
     {
       title: 'Gérer les soldes',
       description: 'Ajuster les soldes de congés',
       icon: TrendingUp,
-      onClick: () => navigate('/admin/balances'),
+      onClick: () => navigate('/balances'),
       color: 'text-success',
     },
     {
       title: 'Rapports',
       description: 'Analyses et statistiques',
       icon: TrendingUp,
-      onClick: () => navigate('/admin/reports'),
+      onClick: () => navigate('/reports'),
       color: 'text-chart-1',
     },
   ];
@@ -166,7 +166,7 @@ export default function AdminDashboard() {
                   <CardTitle>Demandes en attente</CardTitle>
                   <CardDescription>Actions requises immédiatement</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => navigate('/admin/requests')}>
+                <Button variant="outline" size="sm" onClick={() => navigate('/requests')}>
                   Voir tout
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>

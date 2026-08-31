@@ -298,7 +298,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 email_category='user',
                 email_actor=self.request.user,
                 email_details=details,
-                email_cta_path='/admin/users',
+                email_cta_path='/users',
             )
         except Exception:
             logger.exception('Failed to notify admins after user %s for %s', action, user.email)
@@ -335,7 +335,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 ('Nom', name),
                 ('E-mail', email),
             ],
-            email_cta_path='/admin/users',
+            email_cta_path='/users',
         )
         instance.delete()
 
@@ -374,7 +374,7 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
                 ('Nouvelle allocation', f'{total} jours'),
                 ('Employés concernés', str(updated)),
             ],
-            email_cta_path='/admin/balances',
+            email_cta_path='/balances',
         )
         return Response({'updated': updated, 'total': total})
 
@@ -396,7 +396,7 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
                 ('Utilisé', f'{instance.used} jours'),
                 ('En attente', f'{instance.pending} jours'),
             ],
-            email_cta_path='/admin/balances',
+            email_cta_path='/balances',
         )
         return response
 

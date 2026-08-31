@@ -35,11 +35,11 @@ const employeeNavItems = [
 ];
 
 const adminNavItems = [
-  { path: '/admin', icon: LayoutDashboard, label: 'Tableau de bord', adminOnly: true },
-  { path: '/admin/users', icon: UserCog, label: 'Gestion utilisateurs', adminOnly: true },
-  { path: '/admin/requests', icon: FileText, label: 'Toutes les demandes', adminOnly: true },
-  { path: '/admin/balances', icon: TrendingUp, label: 'Gestion soldes', adminOnly: true },
-  { path: '/admin/reports', icon: BarChart3, label: 'Rapports', adminOnly: true },
+  { path: '/', icon: LayoutDashboard, label: 'Tableau de bord', adminOnly: true },
+  { path: '/users', icon: UserCog, label: 'Gestion utilisateurs', adminOnly: true },
+  { path: '/requests', icon: FileText, label: 'Toutes les demandes', adminOnly: true },
+  { path: '/balances', icon: TrendingUp, label: 'Gestion soldes', adminOnly: true },
+  { path: '/reports', icon: BarChart3, label: 'Rapports', adminOnly: true },
   { path: '/public-holidays', icon: Flag, label: 'Jours fériés' },
 ];
 

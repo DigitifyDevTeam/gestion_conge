@@ -18,7 +18,7 @@ export function ProtectedRoute({ requireAdmin = false }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (requireAdmin && !isAdmin()) {

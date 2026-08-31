@@ -102,8 +102,8 @@ export async function apiFetch<T>(
       return apiFetch<T>(path, options, false);
     }
     clearTokens();
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
+    if (window.location.pathname !== '/') {
+      window.location.href = '/';
     }
     throw new ApiError(401, null, 'Unauthorized');
   }

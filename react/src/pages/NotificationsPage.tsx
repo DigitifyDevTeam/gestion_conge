@@ -52,7 +52,7 @@ export default function NotificationsPage() {
     if (!isRead) {
       markReadMutation.mutate(id);
     }
-    navigate(isAdmin() ? '/admin/requests' : '/requests');
+    navigate('/requests');
   };
 
   const markAllRead = async () => {
@@ -61,7 +61,7 @@ export default function NotificationsPage() {
   };
 
   const goBack = () => {
-    navigate(isAdmin() ? '/admin' : '/');
+    navigate('/');
   };
 
   return (

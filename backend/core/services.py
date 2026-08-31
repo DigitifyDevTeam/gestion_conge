@@ -118,7 +118,7 @@ def notify_admins(
     email_category=None,
     email_actor=None,
     email_details=None,
-    email_cta_path='/admin/requests',
+    email_cta_path='/requests',
     email_subject=None,
 ):
     admins = User.objects.filter(
@@ -397,7 +397,7 @@ def create_leave_request(
         email_category='leave_request',
         email_actor=employee,
         email_details=_leave_request_details(request),
-        email_cta_path='/admin/requests',
+        email_cta_path='/requests',
     )
     return request
 
@@ -471,7 +471,7 @@ def update_leave_request(
         email_category='leave_request',
         email_actor=request.employee,
         email_details=_leave_request_details(request),
-        email_cta_path='/admin/requests',
+        email_cta_path='/requests',
     )
     return request
 
@@ -527,7 +527,7 @@ def approve_leave_request(request: LeaveRequest, reviewer, comment=''):
         email_category='leave_request',
         email_actor=reviewer,
         email_details=_leave_request_details(request),
-        email_cta_path='/admin/requests',
+        email_cta_path='/requests',
     )
     return request
 
@@ -570,7 +570,7 @@ def reject_leave_request(request: LeaveRequest, reviewer, comment=''):
             *_leave_request_details(request),
             ('Commentaire', trimmed),
         ],
-        email_cta_path='/admin/requests',
+        email_cta_path='/requests',
     )
     return request
 
@@ -617,7 +617,7 @@ def delete_leave_request(request: LeaveRequest, *, actor=None):
                 ('Durée', days_label),
                 ('Statut précédent', status),
             ],
-            email_cta_path='/admin/requests',
+            email_cta_path='/requests',
         )
     elif status == RequestStatus.PENDING:
         notify_admins(
@@ -633,5 +633,5 @@ def delete_leave_request(request: LeaveRequest, *, actor=None):
                 ('Type', type_label),
                 ('Durée', days_label),
             ],
-            email_cta_path='/admin/requests',
+            email_cta_path='/requests',
         )
