@@ -1,0 +1,13 @@
+# Deploy frontend to public_html (includes api-proxy.php for API without Nginx root access)
+#
+# On your PC:
+#   npm run build
+#   Copy react/dist/* → server ~/public_html/
+#
+# On the server, ensure Gunicorn is running:
+#   cd ~/gestion_conge/backend && bash gunicorn-ctl.sh start
+#
+# Test:
+#   curl -k https://rh.digitify.fr/api-proxy.php/auth/token/ -X POST \
+#     -H "Content-Type: application/json" \
+#     -d '{"username":"admin2406","password":"YOUR_PASSWORD"}'
