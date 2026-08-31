@@ -31,11 +31,15 @@ if ($query !== '') {
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 $forwardHeaders = [];
+$hasContentType = false;
 if (function_exists('getallheaders')) {
     foreach (getallheaders() as $name => $value) {
         $lower = strtolower($name);
         if (in_array($lower, ['host', 'connection', 'content-length'], true)) {
             continue;
+        }
+        if ($lower === 'content-type') {
+            $hasContentType = true;
         }
         $forwardHeaders[] = $name . ': ' . $value;
     }
@@ -44,6 +48,12 @@ if (function_exists('getallheaders')) {
 $body = null;
 if (!in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
     $body = file_get_contents('php://input');
+    if ($body !== '' && $body !== false && !$hasContentType) {
+        $forwardHeaders[] = 'Content-Type: application/json';
+    }
+    if ($body !== false && $body !== '') {
+        $forwardHeaders[] = 'Content-Length: ' . strlen($body);
+    }
 }
 
 $ch = curl_init($url);
