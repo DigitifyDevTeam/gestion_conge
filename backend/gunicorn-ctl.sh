@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start/stop Gunicorn without sudo. Run from backend/: bash gunicorn-ctl.sh start
-set -euo pipefail
+set -eo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$APP_DIR/gunicorn.pid"
@@ -8,12 +8,13 @@ LOG_FILE="$APP_DIR/gunicorn.log"
 VENV_GUNICORN="$APP_DIR/venv/bin/gunicorn"
 
 cmd="${1:-start}"
+cmd="${cmd//$'\r'/}"
 
 cd "$APP_DIR"
 
 if [[ -f .env ]]; then
-  _gb=$(grep -E '^GUNICORN_BIND=' .env | tail -1 | cut -d= -f2- | tr -d '\r')
-  if [[ -n "$_gb" ]]; then
+  _gb=$(grep -E '^GUNICORN_BIND=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true)
+  if [[ -n "${_gb:-}" ]]; then
     export GUNICORN_BIND="$_gb"
   fi
 fi
@@ -23,13 +24,9 @@ port_from_bind() {
   echo "${BIND##*:}"
 }
 
-host_from_bind() {
-  echo "${BIND%%:*}"
-}
-
 port_in_use() {
   local port="$1"
-  ss -tln 2>/dev/null | awk -v p=":${port}" '$4 ~ p { found=1 } END { exit !found }'
+  ss -tln 2>/dev/null | grep -q ":${port} "
 }
 
 is_running() {
@@ -37,16 +34,17 @@ is_running() {
 }
 
 responds() {
-  # Django returns 404 on /api/ — any HTTP response means gunicorn is up
   local code
   code=$(curl -s -o /dev/null -m 3 -w "%{http_code}" "http://$BIND/api/" 2>/dev/null || echo "000")
-  [[ "$code" != "000" && "$code" != "000000" ]]
+  [[ "$code" =~ ^[0-9]+$ && "$code" != "000" ]]
 }
 
 show_log_tail() {
   if [[ -f "$LOG_FILE" ]]; then
     echo "--- Last lines of $LOG_FILE ---"
     tail -n 20 "$LOG_FILE"
+  else
+    echo "No log file at $LOG_FILE"
   fi
 }
 
@@ -56,42 +54,38 @@ case "$cmd" in
     echo "Configured bind: $BIND"
     if port_in_use "$port"; then
       echo "Port $port is IN USE."
-      echo "Test API: curl http://$BIND/api/"
       curl -s "http://$BIND/api/" || true
       echo ""
     else
       echo "Port $port is free."
     fi
     if is_running; then
-      echo "Our gunicorn pid: $(cat "$PID_FILE")"
+      echo "Gunicorn pid: $(cat "$PID_FILE")"
     else
-      echo "Our gunicorn is not running (no valid pid file)."
+      echo "No gunicorn pid file."
     fi
     ;;
   start)
     port="$(port_from_bind)"
-    if port_in_use "$port"; then
-      echo "ERROR: Port $port is already in use."
-      echo "Another process owns it (maybe an old gunicorn)."
-      echo ""
-      echo "Try:"
-      echo "  ss -tln | grep 8001"
-      echo "  GUNICORN_BIND=127.0.0.1:8002 bash gunicorn-ctl.sh start"
-      exit 1
-    fi
     if is_running; then
       echo "Gunicorn already running (pid $(cat "$PID_FILE"))"
       exit 0
     fi
+    if port_in_use "$port"; then
+      echo "ERROR: Port $port already in use by another process."
+      ss -tln | grep ":${port} " || true
+      exit 1
+    fi
     rm -f "$PID_FILE"
     if [[ ! -x "$VENV_GUNICORN" ]]; then
-      echo "Missing $VENV_GUNICORN — run: python3 -m venv venv && pip install -r requirements.txt"
+      echo "Missing $VENV_GUNICORN"
       exit 1
     fi
     if [[ ! -f .env ]]; then
       echo "Missing $APP_DIR/.env"
       exit 1
     fi
+    echo "Starting gunicorn on $BIND ..."
     "$VENV_GUNICORN" \
       --daemon \
       --workers 3 \
@@ -103,13 +97,13 @@ case "$cmd" in
       --capture-output \
       backend.wsgi:application
     sleep 2
-    if is_running && responds; then
+    if is_running && port_in_use "$port"; then
       echo "Gunicorn started (pid $(cat "$PID_FILE"), bind $BIND)"
-      echo "Nginx must proxy to: http://$BIND"
+      echo "Test: curl http://$BIND/api/"
     else
-      echo "Gunicorn failed to start or is not responding."
-      rm -f "$PID_FILE"
+      echo "Gunicorn failed to start."
       show_log_tail
+      rm -f "$PID_FILE"
       exit 1
     fi
     ;;
@@ -124,15 +118,17 @@ case "$cmd" in
     fi
     ;;
   restart)
-    "$0" stop || true
+    bash "$0" stop || true
     sleep 1
-    "$0" start
+    bash "$0" start
     ;;
   status)
-    if is_running && responds; then
+    port="$(port_from_bind)"
+    if is_running && port_in_use "$port"; then
       echo "Gunicorn running (pid $(cat "$PID_FILE"), bind $BIND)"
+      responds && echo "API responding on http://$BIND/api/"
     else
-      echo "Gunicorn not running or not responding on $BIND"
+      echo "Gunicorn not running on $BIND"
       show_log_tail
       exit 1
     fi
