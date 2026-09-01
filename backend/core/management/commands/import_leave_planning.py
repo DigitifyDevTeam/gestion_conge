@@ -20,8 +20,8 @@ from core.models import (
     RequestStatus,
 )
 
-APPROVED_COLOR = 'FF92D050'
-PENDING_COLOR = 'FFF4B084'
+APPROVED_COLOR = '92D050'
+PENDING_COLOR = 'F4B084'
 HALF_DAY = Decimal('0.5')
 LEGEND_MARKERS = ('jour féri', 'demande de cong', 'congé valid', 'conge valid')
 
@@ -41,16 +41,32 @@ def normalize_name(value: str) -> str:
 def cell_rgb(cell) -> str | None:
     try:
         if cell.fill and cell.fill.fgColor and cell.fill.fgColor.rgb:
-            return str(cell.fill.fgColor.rgb).upper()
+            rgb = str(cell.fill.fgColor.rgb).upper()
+            if len(rgb) >= 6:
+                return rgb[-6:]
     except (TypeError, ValueError, AttributeError):
         return None
+    return None
+
+
+def leave_status_from_rgb(rgb: str | None) -> str | None:
+    if rgb == APPROVED_COLOR:
+        return RequestStatus.APPROVED
+    if rgb == PENDING_COLOR:
+        return RequestStatus.PENDING
     return None
 
 
 def is_half_day(value) -> bool:
     if value is None:
         return False
-    return '0,5' in str(value) or '0.5' in str(value)
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            return Decimal(str(value)) == HALF_DAY
+        except Exception:
+            return False
+    text = str(value).strip().lower()
+    return '0,5' in text or '0.5' in text
 
 
 def detect_year(sheet_title: str, file_path: Path, fallback: int) -> int:
@@ -226,6 +242,7 @@ class Command(BaseCommand):
         created_requests = 0
         created_days = 0
         skipped_employees: list[str] = []
+        employee_totals: list[tuple[str, Decimal, int]] = []
 
         with transaction.atomic():
             for employee_name, entries in parsed_rows:
@@ -247,8 +264,11 @@ class Command(BaseCommand):
                 matched_name = user.get_full_name() or user.username
                 if normalize_name(matched_name) != resolve_excel_name(employee_name):
                     self.stdout.write(
-                        f'Correspondance : {employee_name} → {matched_name}'
+                        f'Correspondance : {employee_name} -> {matched_name}'
                     )
+
+                employee_counted = Decimal('0')
+                employee_cells = 0
 
                 for status, status_entries in group_entries_by_status(entries).items():
                     if self._has_overlap(user, status_entries):
@@ -258,6 +278,17 @@ class Command(BaseCommand):
                         )
 
                     days = resolve_days(status_entries)
+                    employee_counted += days
+                    employee_cells += len(status_entries)
+                    half_days = sum(
+                        1 for entry in status_entries if entry['half_day_period']
+                    )
+                    date_labels = ', '.join(
+                        f"{entry['date'].strftime('%d/%m')}"
+                        f"{' (0,5J)' if entry['half_day_period'] else ''}"
+                        for entry in status_entries
+                    )
+
                     request = LeaveRequest(
                         employee=user,
                         type=leave_type,
@@ -278,9 +309,11 @@ class Command(BaseCommand):
                         created_requests += 1
                         created_days += len(status_entries)
                         self.stdout.write(
-                            f'[dry-run] {employee_name} → {status} : '
-                            f'{len(status_entries)} jour(s), {days} jour(s) comptés'
+                            f'[dry-run] {employee_name} -> {status} : '
+                            f'{len(status_entries)} cellule(s), {days} jour(s) comptés'
+                            + (f', {half_days} demi-journée(s)' if half_days else '')
                         )
+                        self.stdout.write(f'           dates : {date_labels}')
                         continue
 
                     request.save()
@@ -306,13 +339,26 @@ class Command(BaseCommand):
                     created_days += len(status_entries)
                     self.stdout.write(
                         self.style.SUCCESS(
-                            f'{employee_name} → {status} : '
-                            f'{len(status_entries)} jour(s), {days} jour(s) comptés'
+                            f'{employee_name} -> {status} : '
+                            f'{len(status_entries)} cellule(s), {days} jour(s) comptés'
+                            + (f', {half_days} demi-journée(s)' if half_days else '')
                         )
                     )
 
+                employee_totals.append((employee_name, employee_counted, employee_cells))
+
             if dry_run:
                 transaction.set_rollback(True)
+
+        self.stdout.write('')
+        self.stdout.write('Récapitulatif par employé :')
+        grand_total = Decimal('0')
+        for employee_name, counted_days, cell_count in employee_totals:
+            grand_total += counted_days
+            self.stdout.write(
+                f'  - {employee_name} : {counted_days} jour(s) comptés ({cell_count} cellule(s))'
+            )
+        self.stdout.write(f'  Total équipe : {grand_total} jour(s)')
 
         summary = (
             f'Import terminé : {created_requests} demande(s), '
@@ -361,11 +407,8 @@ class Command(BaseCommand):
                 if day.weekday() >= 5 or day in holidays:
                     continue
                 rgb = cell_rgb(sheet.cell(row_idx, col))
-                if rgb == APPROVED_COLOR:
-                    status = RequestStatus.APPROVED
-                elif rgb == PENDING_COLOR:
-                    status = RequestStatus.PENDING
-                else:
+                status = leave_status_from_rgb(rgb)
+                if status is None:
                     continue
 
                 half_day = is_half_day(sheet.cell(row_idx, col).value)
