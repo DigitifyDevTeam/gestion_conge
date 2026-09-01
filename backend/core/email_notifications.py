@@ -3,10 +3,10 @@ from datetime import datetime
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .email_delivery import send_branded_email
 from .models import UserRole
 
 logger = logging.getLogger(__name__)
@@ -104,15 +104,13 @@ def send_admin_alert_email(
     sent = 0
     for recipient in recipients:
         try:
-            email = EmailMultiAlternatives(
+            if send_branded_email(
                 subject=subject,
-                body=text_body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                text_body=text_body,
+                html_body=html_body,
                 to=[recipient],
-            )
-            email.attach_alternative(html_body, 'text/html')
-            email.send(fail_silently=False)
-            sent += 1
+            ):
+                sent += 1
         except Exception:
             logger.exception('Failed to send admin alert email to %s', recipient)
     return sent
@@ -129,14 +127,15 @@ def _format_days_display(value) -> str:
     return text
 
 
-def send_monthly_leave_report_email(*, report) -> int:
-    """Send the monthly leave report to all comptable users."""
+def send_monthly_leave_report_email(*, report, recipients: list[str] | None = None) -> int:
+    """Send the monthly leave report to comptable users (or explicit recipients)."""
     if not settings.EMAIL_HOST_USER:
         return 0
 
-    from .monthly_leave_report import accountant_recipients
+    if recipients is None:
+        from .monthly_leave_report import accountant_recipients
 
-    recipients = accountant_recipients()
+        recipients = accountant_recipients()
     if not recipients:
         logger.warning('No comptable recipients found for monthly leave report.')
         return 0
@@ -188,15 +187,13 @@ def send_monthly_leave_report_email(*, report) -> int:
     sent = 0
     for recipient in recipients:
         try:
-            email = EmailMultiAlternatives(
+            if send_branded_email(
                 subject=subject,
-                body=text_body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                text_body=text_body,
+                html_body=html_body,
                 to=[recipient],
-            )
-            email.attach_alternative(html_body, 'text/html')
-            email.send(fail_silently=False)
-            sent += 1
+            ):
+                sent += 1
         except Exception:
             logger.exception('Failed to send monthly report to %s', recipient)
     return sent

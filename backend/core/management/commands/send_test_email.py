@@ -1,6 +1,7 @@
 from django.conf import settings
-from django.core.mail import send_mail
 from django.core.management.base import BaseCommand, CommandError
+
+from core.email_delivery import send_branded_email
 
 
 class Command(BaseCommand):
@@ -25,12 +26,10 @@ class Command(BaseCommand):
         self.stdout.write(f'To: {recipient}')
 
         try:
-            sent = send_mail(
+            sent = send_branded_email(
                 subject='Gestion de congé — test SMTP',
-                message='Si vous recevez cet e-mail, la configuration SMTP fonctionne.',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[recipient],
-                fail_silently=False,
+                text_body='Si vous recevez cet e-mail, la configuration SMTP fonctionne.',
+                to=[recipient],
             )
         except Exception as exc:
             raise CommandError(f'SMTP failed: {exc}') from exc

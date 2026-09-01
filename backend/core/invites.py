@@ -3,11 +3,11 @@ from datetime import datetime
 from urllib.parse import quote
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
 
 from .account_activation import ACTIVATION_MAX_AGE_SECONDS, make_activation_token
+from .email_delivery import send_branded_email
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +41,12 @@ def send_activation_email(*, user) -> bool:
         html_body = render_to_string('emails/account_activation.html', context)
         text_body = render_to_string('emails/account_activation.txt', context)
 
-        email_msg = EmailMultiAlternatives(
+        return send_branded_email(
             subject=subject,
-            body=text_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
+            text_body=text_body,
+            html_body=html_body,
             to=[email],
         )
-        email_msg.attach_alternative(html_body, 'text/html')
-        email_msg.send(fail_silently=False)
-        return True
     except Exception:
         logger.exception('Failed to send activation email to %s', email)
         return False
@@ -69,14 +66,11 @@ def send_comptable_welcome_email(*, email: str, name: str = '') -> bool:
         f'— L\'équipe Gestion de congé'
     )
     try:
-        send_mail(
+        return send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=False,
+            text_body=body,
+            to=[email],
         )
-        return True
     except Exception:
         logger.exception('Failed to send comptable welcome email to %s', email)
         return False

@@ -3,8 +3,9 @@ import secrets
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.mail import send_mail
 from django.utils import timezone
+
+from .email_delivery import send_branded_email
 from rest_framework.exceptions import ValidationError
 
 from .models import EmailOTP, EmailOTPPurpose
@@ -111,12 +112,10 @@ def send_otp_email(*, email: str, code: str, purpose: str, name: str = '') -> No
             f'— L\'équipe Gestion de congé'
         )
 
-    send_mail(
+    send_branded_email(
         subject=subject,
-        message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        fail_silently=False,
+        text_body=body,
+        to=[email],
     )
 
 
