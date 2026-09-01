@@ -52,9 +52,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             'recipient',
-            nargs='?',
-            default='a.alouini@digitify.fr',
-            help='Destinataire du rapport de test (défaut : a.alouini@digitify.fr).',
+            help='Destinataire du rapport de test.',
         )
 
     def handle(self, *args, **options):

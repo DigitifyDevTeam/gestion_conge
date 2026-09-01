@@ -25,6 +25,12 @@ class Command(BaseCommand):
             action='store_true',
             help='Affiche le résumé sans envoyer les e-mails.',
         )
+        parser.add_argument(
+            '--to',
+            dest='recipient',
+            default='',
+            help='Destinataire optionnel (défaut : ACCOUNTANT_EMAIL).',
+        )
 
     def handle(self, *args, **options):
         year = options['year']
@@ -62,7 +68,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('Dry-run : aucun e-mail envoyé.'))
             return
 
-        sent = send_monthly_leave_report_email(report=report)
+        sent = send_monthly_leave_report_email(
+            report=report,
+            recipients=[options['recipient']] if options['recipient'] else None,
+        )
         if sent:
             self.stdout.write(self.style.SUCCESS(f'{sent} e-mail(s) envoyé(s) (comptable + CC).'))
         else:
