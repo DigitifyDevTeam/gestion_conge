@@ -7,7 +7,7 @@ from core.monthly_leave_report import build_monthly_leave_report
 
 
 class Command(BaseCommand):
-    help = 'Envoie le rapport mensuel des congés aux comptables.'
+    help = 'Envoie le rapport mensuel des congés à l\'adresse comptable configurée.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -64,10 +64,10 @@ class Command(BaseCommand):
 
         sent = send_monthly_leave_report_email(report=report)
         if sent:
-            self.stdout.write(self.style.SUCCESS(f'{sent} e-mail(s) envoyé(s) aux comptables.'))
+            self.stdout.write(self.style.SUCCESS(f'{sent} e-mail(s) envoyé(s) (comptable + CC).'))
         else:
             self.stdout.write(
                 self.style.WARNING(
-                    'Aucun e-mail envoyé. Vérifiez la config SMTP et les utilisateurs comptables.'
+                    'Aucun e-mail envoyé. Vérifiez la config SMTP et ACCOUNTANT_EMAIL.'
                 )
             )

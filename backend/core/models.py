@@ -42,7 +42,6 @@ class RequestStatus(models.TextChoices):
 class UserRole(models.TextChoices):
     EMPLOYEE = 'employee', 'Employee'
     ADMIN = 'admin', 'Admin'
-    COMPTABLE = 'comptable', 'Comptable'
 
 
 class NotificationType(models.TextChoices):

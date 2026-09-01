@@ -44,7 +44,7 @@ from .serializers import (
     display_name,
 )
 from .account_activation import resolve_activation_user
-from .invites import send_activation_email, send_comptable_welcome_email
+from .invites import send_activation_email
 from . import services
 
 logger = logging.getLogger(__name__)
@@ -318,21 +318,13 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='resend-invitation')
     def resend_invitation(self, request, pk=None):
         user = self.get_object()
-        profile = getattr(user, 'profile', None)
-        role = profile.role if profile else UserRole.EMPLOYEE
-
-        if role == UserRole.COMPTABLE:
-            sent = send_comptable_welcome_email(
-                email=user.email,
-                name=display_name(user),
-            )
-        elif user.is_active:
+        if user.is_active:
             return Response(
                 {'detail': 'Ce compte est déjà activé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        else:
-            sent = send_activation_email(user=user)
+
+        sent = send_activation_email(user=user)
 
         if not sent:
             return Response(
@@ -390,7 +382,9 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'patch', 'put', 'head', 'options']
 
     def get_queryset(self):
-        qs = LeaveBalance.objects.select_related('user', 'user__profile')
+        qs = LeaveBalance.objects.select_related('user', 'user__profile').filter(
+            user__profile__role=UserRole.EMPLOYEE,
+        )
         if is_admin_user(self.request.user):
             user_id = self.request.query_params.get('user_id')
             if user_id:
@@ -408,7 +402,10 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
         serializer = SetAnnualAllocationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         total = serializer.validated_data['total']
-        updated = LeaveBalance.objects.filter(type=LeaveType.ANNUAL).update(total=total)
+        updated = LeaveBalance.objects.filter(
+            type=LeaveType.ANNUAL,
+            user__profile__role=UserRole.EMPLOYEE,
+        ).update(total=total)
         services.notify_admins(
             'Allocation annuelle modifiée',
             f'L\'allocation annuelle a été fixée à {total} jours pour {updated} employé(s).',
@@ -455,7 +452,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             'day_entries',
             Prefetch('employee__leave_balances', queryset=LeaveBalance.objects.all()),
-        )
+        ).filter(employee__profile__role=UserRole.EMPLOYEE)
         if not is_admin_user(self.request.user):
             qs = qs.filter(employee=self.request.user)
         status_param = self.request.query_params.get('status')
@@ -592,8 +589,7 @@ class TeamView(APIView):
     def get(self, request):
         today = date.today()
         users = (
-            User.objects.filter(is_active=True)
-            .exclude(profile__role=UserRole.COMPTABLE)
+            User.objects.filter(is_active=True, profile__role=UserRole.EMPLOYEE)
             .select_related('profile')
         )
         approved = LeaveRequest.objects.filter(status=RequestStatus.APPROVED)

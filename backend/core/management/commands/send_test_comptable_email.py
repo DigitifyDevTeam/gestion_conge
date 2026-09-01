@@ -15,7 +15,7 @@ def build_sample_monthly_report() -> MonthlyLeaveReport:
         leave_lines=[
             MonthlyLeaveLine(
                 employee_name='Jean Dupont',
-                leave_type='Congés annuels',
+                leave_type='Annuel',
                 days=Decimal('3'),
                 dates_label='12/08/26 → 14/08/26',
                 is_long=False,
@@ -24,15 +24,12 @@ def build_sample_monthly_report() -> MonthlyLeaveReport:
             ),
             MonthlyLeaveLine(
                 employee_name='Marie Martin',
-                leave_type='Congés maladie',
+                leave_type='Sans solde',
                 days=Decimal('6'),
                 dates_label='05/08/26 → 12/08/26',
-                is_long=True,
+                is_long=False,
                 reason='—',
-                narrative=(
-                    'Marie Martin a pris 6 jours (05/08/26 → 12/08/26) '
-                    '— absence longue (+5 jours).'
-                ),
+                narrative='Marie Martin a pris 6 jours (05/08/26 → 12/08/26).',
             ),
         ],
         holidays=[
@@ -44,13 +41,13 @@ def build_sample_monthly_report() -> MonthlyLeaveReport:
         ],
         total_days=Decimal('9'),
         total_requests=2,
-        long_leave_count=1,
+        long_leave_count=0,
         employees_count=2,
     )
 
 
 class Command(BaseCommand):
-    help = 'Envoie un rapport mensuel de test aux comptables (données fictives).'
+    help = 'Envoie un rapport mensuel de test (données fictives).'
 
     def add_arguments(self, parser):
         parser.add_argument(

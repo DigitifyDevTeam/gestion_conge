@@ -1,15 +1,25 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+from .models import UserRole
+
 
 def user_role(user):
     profile = getattr(user, 'profile', None)
     if profile is None:
-        return 'employee'
+        return UserRole.EMPLOYEE
     return profile.role
 
 
 def is_admin_user(user):
-    return bool(user and user.is_authenticated and user_role(user) == 'admin')
+    return bool(user and user.is_authenticated and user_role(user) == UserRole.ADMIN)
+
+
+def is_employee_user(user):
+    return bool(user and user.is_authenticated and user_role(user) == UserRole.EMPLOYEE)
+
+
+def can_have_leave(user):
+    return is_employee_user(user)
 
 
 class IsAdminRole(BasePermission):

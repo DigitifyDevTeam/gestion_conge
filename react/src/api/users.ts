@@ -6,7 +6,7 @@ interface ApiUser {
   id: number | string;
   email: string;
   name: string;
-  role: 'employee' | 'admin' | 'comptable';
+  role: 'employee' | 'admin';
   department?: string;
   position?: string;
   avatar?: string;
@@ -29,7 +29,7 @@ export async function listUsers(): Promise<User[]> {
 export async function createUser(payload: {
   email: string;
   name: string;
-  role: 'employee' | 'admin' | 'comptable';
+  role: 'employee' | 'admin';
   department?: string;
   position?: string;
   avatar?: string;

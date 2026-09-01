@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
-from core.models import DEFAULT_LEAVE_ALLOCATIONS, EmployeeProfile, LeaveBalance, UserRole
+from core.models import EmployeeProfile, UserRole
 
 
 class Command(BaseCommand):
@@ -37,13 +37,6 @@ class Command(BaseCommand):
         profile.department = profile.department or 'RH'
         profile.position = profile.position or 'Administrateur'
         profile.save()
-
-        for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
-            LeaveBalance.objects.get_or_create(
-                user=user,
-                type=leave_type,
-                defaults={'total': total, 'used': 0, 'pending': 0},
-            )
 
         ok = user.check_password(password)
         self.stdout.write(

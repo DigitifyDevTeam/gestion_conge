@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth.models import User
 
-from .models import HalfDayPeriod, LeaveRequest, PublicHoliday, RequestStatus, UserRole
+from .models import HalfDayPeriod, LeaveRequest, PublicHoliday, RequestStatus
 
 MONTH_NAMES_FR = {
     1: 'janvier',
@@ -23,10 +24,8 @@ MONTH_NAMES_FR = {
 }
 
 LEAVE_TYPE_FR = {
-    'annual': 'Congés annuels',
-    'sick': 'Congés maladie',
-    'personal': 'Jour personnel',
-    'unpaid': 'Congés sans solde',
+    'annual': 'Annuel',
+    'unpaid': 'Sans solde',
 }
 
 LONG_LEAVE_THRESHOLD = Decimal('5')
@@ -207,13 +206,5 @@ def build_monthly_leave_report(year: int, month: int) -> MonthlyLeaveReport:
     )
 
 
-def accountant_recipients() -> list[str]:
-    emails = list(
-        User.objects.filter(
-            is_active=True,
-            profile__role=UserRole.COMPTABLE,
-        )
-        .exclude(email='')
-        .values_list('email', flat=True)
-    )
-    return emails
+def monthly_report_recipients() -> list[str]:
+    return list(getattr(settings, 'ACCOUNTANT_EMAIL', []))

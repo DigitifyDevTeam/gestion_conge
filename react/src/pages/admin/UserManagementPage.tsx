@@ -46,33 +46,13 @@ import { User, UserRole } from '@/types/auth';
 import { createUser, deleteUser, listUsers, resendUserInvitation, updateUser } from '@/api/users';
 import { ApiError } from '@/api/client';
 
-const userSchema = z
-  .object({
-    name: z.string().min(1, 'Le nom est requis'),
-    email: z.string().email('Email invalide'),
-    role: z.enum(['employee', 'admin', 'comptable']),
-    department: z.string(),
-    position: z.string(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.role === 'comptable') {
-      return;
-    }
-    if (!data.department.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Le département est requis',
-        path: ['department'],
-      });
-    }
-    if (!data.position.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Le poste est requis',
-        path: ['position'],
-      });
-    }
-  });
+const userSchema = z.object({
+  name: z.string().min(1, 'Le nom est requis'),
+  email: z.string().email('Email invalide'),
+  role: z.enum(['employee', 'admin']),
+  department: z.string().min(1, 'Le département est requis'),
+  position: z.string().min(1, 'Le poste est requis'),
+});
 
 type UserFormData = z.infer<typeof userSchema>;
 
@@ -102,8 +82,6 @@ function roleLabel(role: UserRole): string {
   switch (role) {
     case 'admin':
       return 'Admin';
-    case 'comptable':
-      return 'Comptable';
     case 'employee':
       return 'Employé';
     default: {
@@ -113,12 +91,10 @@ function roleLabel(role: UserRole): string {
   }
 }
 
-function roleBadgeVariant(role: UserRole): 'default' | 'outline' | 'secondary' {
+function roleBadgeVariant(role: UserRole): 'default' | 'outline' {
   switch (role) {
     case 'admin':
       return 'default';
-    case 'comptable':
-      return 'secondary';
     case 'employee':
       return 'outline';
     default: {
@@ -171,25 +147,14 @@ export default function UserManagementPage() {
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['leave-balances'] });
-      if (user.role === 'comptable') {
-        toast({
-          title: user.invitationSent === false ? 'Comptable ajouté (e-mail non envoyé)' : 'Comptable ajouté',
-          description:
-            user.invitationSent === false
-              ? `Le compte a été créé mais l'e-mail n'a pas pu être envoyé à ${user.email}. Vérifiez la configuration SMTP.`
-              : `${user.email} recevra le rapport mensuel des congés par e-mail.`,
-          variant: user.invitationSent === false ? 'destructive' : 'default',
-        });
-      } else {
-        toast({
-          title: user.invitationSent === false ? 'Utilisateur créé (e-mail non envoyé)' : 'Utilisateur autorisé',
-          description:
-            user.invitationSent === false
-              ? `Le compte a été créé mais l'invitation n'a pas pu être envoyée à ${user.email}. Utilisez « Renvoyer l'invitation » ou vérifiez la configuration SMTP.`
-              : `Une invitation avec lien d'activation a été envoyée à ${user.email}.`,
-          variant: user.invitationSent === false ? 'destructive' : 'default',
-        });
-      }
+      toast({
+        title: user.invitationSent === false ? 'Utilisateur créé (e-mail non envoyé)' : 'Utilisateur autorisé',
+        description:
+          user.invitationSent === false
+            ? `Le compte a été créé mais l'invitation n'a pas pu être envoyée à ${user.email}. Utilisez « Renvoyer l'invitation » ou vérifiez la configuration SMTP.`
+            : `Une invitation avec lien d'activation a été envoyée à ${user.email}.`,
+        variant: user.invitationSent === false ? 'destructive' : 'default',
+      });
       setIsCreateDialogOpen(false);
       reset();
     },
@@ -360,7 +325,7 @@ export default function UserManagementPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {user.role !== 'comptable' && user.isActive === false && (
+                          {user.isActive === false && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -408,9 +373,7 @@ export default function UserManagementPage() {
           <DialogHeader>
             <DialogTitle>Créer un nouvel utilisateur</DialogTitle>
             <DialogDescription>
-              {role === 'comptable'
-                ? 'Le comptable recevra un rapport mensuel par e-mail. Il ne se connecte pas à l\'application.'
-                : 'La personne recevra un e-mail avec un lien d\'activation pour choisir son mot de passe.'}
+              La personne recevra un e-mail avec un lien d'activation pour choisir son mot de passe.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(handleCreate)} className="space-y-4">
@@ -437,31 +400,26 @@ export default function UserManagementPage() {
                 <SelectContent>
                   <SelectItem value="employee">Employé</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="comptable">Comptable</SelectItem>
                 </SelectContent>
               </Select>
               {errors.role && (
                 <p className="text-sm text-destructive">{errors.role.message}</p>
               )}
             </div>
-            {role !== 'comptable' && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="department">Département</Label>
-                  <Input id="department" {...register('department')} />
-                  {errors.department && (
-                    <p className="text-sm text-destructive">{errors.department.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="position">Poste</Label>
-                  <Input id="position" {...register('position')} />
-                  {errors.position && (
-                    <p className="text-sm text-destructive">{errors.position.message}</p>
-                  )}
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="department">Département</Label>
+              <Input id="department" {...register('department')} />
+              {errors.department && (
+                <p className="text-sm text-destructive">{errors.department.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="position">Poste</Label>
+              <Input id="position" {...register('position')} />
+              {errors.position && (
+                <p className="text-sm text-destructive">{errors.position.message}</p>
+              )}
+            </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
@@ -509,28 +467,23 @@ export default function UserManagementPage() {
                 <SelectContent>
                   <SelectItem value="employee">Employé</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="comptable">Comptable</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {role !== 'comptable' && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-department">Département</Label>
-                  <Input id="edit-department" {...register('department')} />
-                  {errors.department && (
-                    <p className="text-sm text-destructive">{errors.department.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-position">Poste</Label>
-                  <Input id="edit-position" {...register('position')} />
-                  {errors.position && (
-                    <p className="text-sm text-destructive">{errors.position.message}</p>
-                  )}
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-department">Département</Label>
+              <Input id="edit-department" {...register('department')} />
+              {errors.department && (
+                <p className="text-sm text-destructive">{errors.department.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-position">Poste</Label>
+              <Input id="edit-position" {...register('position')} />
+              {errors.position && (
+                <p className="text-sm text-destructive">{errors.position.message}</p>
+              )}
+            </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"

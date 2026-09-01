@@ -199,3 +199,9 @@ else:
     DEFAULT_FROM_EMAIL = 'Gestion de congé <noreply@gestion-conges.local>'
 _email_cc = os.environ.get('EMAIL_CC', 'webdev@digitify.fr').strip()
 EMAIL_CC = [address.strip() for address in _email_cc.split(',') if address.strip()]
+_accountant_email = os.environ.get('ACCOUNTANT_EMAIL', '').strip()
+ACCOUNTANT_EMAIL = [
+    address.strip()
+    for address in _accountant_email.split(',')
+    if address.strip()
+]

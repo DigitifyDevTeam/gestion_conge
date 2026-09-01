@@ -38,7 +38,7 @@ export function BalanceCard({ balance, index }: BalanceCardProps) {
 
   const config = typeConfig[balance.type];
   const Icon = config.icon;
-  const percentage = balance.total > 0 ? (balance.remaining / balance.total) * 100 : 0;
+  const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
 
   return (
     <div 
@@ -59,7 +59,7 @@ export function BalanceCard({ balance, index }: BalanceCardProps) {
       <h3 className="text-sm font-medium text-muted-foreground mb-1">{config.label}</h3>
       
       <div className="flex items-baseline gap-1 mb-3">
-        <span className="text-3xl font-bold text-foreground">{formatLeaveDaysNumber(balance.remaining)}</span>
+        <span className="text-3xl font-bold text-foreground">{formatLeaveDaysNumber(balance.used)}</span>
         <span className="text-sm text-muted-foreground">/ {formatLeaveDaysNumber(balance.total)} jours</span>
       </div>
 

@@ -1,6 +1,8 @@
 {% extends "emails/base.html" %}
 
 {% block title %}{{ subject }}{% endblock %}
+{% block header_title %}Agence BWEB 1750836V{% endblock %}
+{% block header_subtitle %}Rapport mensuel des congés{% endblock %}
 
 {% block content %}
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
@@ -34,7 +36,7 @@
     <td style="padding-bottom:28px;">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
         <tr>
-          <td width="25%" style="padding:4px;">
+          <td width="33%" style="padding:4px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
               <tr><td style="padding:16px;text-align:center;">
                 <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;">Employés</p>
@@ -42,7 +44,7 @@
               </td></tr>
             </table>
           </td>
-          <td width="25%" style="padding:4px;">
+          <td width="33%" style="padding:4px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
               <tr><td style="padding:16px;text-align:center;">
                 <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;">Congés</p>
@@ -50,7 +52,7 @@
               </td></tr>
             </table>
           </td>
-          <td width="25%" style="padding:4px;">
+          <td width="34%" style="padding:4px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
               <tr><td style="padding:16px;text-align:center;">
                 <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;">Jours</p>
@@ -58,64 +60,10 @@
               </td></tr>
             </table>
           </td>
-          <td width="25%" style="padding:4px;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:{% if long_leave_count %}#fffbeb{% else %}#f9fafb{% endif %};border:1px solid {% if long_leave_count %}#fde68a{% else %}#e5e7eb{% endif %};border-radius:12px;">
-              <tr><td style="padding:16px;text-align:center;">
-                <p style="margin:0 0 4px;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;">+5 jours</p>
-                <p style="margin:0;color:{% if long_leave_count %}#d97706{% else %}#111827{% endif %};font-size:24px;font-weight:700;">{{ long_leave_count }}</p>
-              </td></tr>
-            </table>
-          </td>
         </tr>
       </table>
     </td>
   </tr>
-
-  {% if narrative_lines %}
-  <!-- Narrative summary -->
-  <tr>
-    <td style="padding-bottom:12px;">
-      <h3 style="margin:0;color:#111827;font-size:16px;font-weight:700;">Récapitulatif</h3>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding-bottom:28px;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
-        {% for line in narrative_lines %}
-        <tr>
-          <td style="padding:14px 20px;border-bottom:1px solid #f3f4f6;{% if line.is_long %}background-color:#fffbeb;{% endif %}">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-              <tr>
-                <td style="width:28px;vertical-align:top;padding-top:2px;">
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background-color:{% if line.is_long %}#f59e0b{% else %}#6366f1{% endif %};"></span>
-                </td>
-                <td style="vertical-align:top;">
-                  <p style="margin:0;color:#111827;font-size:14px;line-height:1.5;">{{ line.narrative }}</p>
-                  {% if line.is_long %}
-                  <span style="display:inline-block;margin-top:6px;background-color:#fef3c7;color:#b45309;font-size:10px;font-weight:600;padding:3px 8px;border-radius:6px;text-transform:uppercase;">Absence longue</span>
-                  {% endif %}
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        {% endfor %}
-      </table>
-    </td>
-  </tr>
-  {% else %}
-  <tr>
-    <td style="padding-bottom:28px;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
-        <tr>
-          <td style="padding:24px;text-align:center;">
-            <p style="margin:0;color:#6b7280;font-size:14px;">Aucun congé approuvé sur cette période.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-  {% endif %}
 
   {% if leave_lines %}
   <!-- Detailed table -->
@@ -135,12 +83,24 @@
         </tr>
         {% for line in leave_lines %}
         <tr>
-          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#111827;font-weight:600;{% if line.is_long %}background-color:#fffbeb;{% endif %}">{{ line.employee_name }}</td>
-          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#4b5563;{% if line.is_long %}background-color:#fffbeb;{% endif %}">{{ line.leave_type }}</td>
-          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#111827;font-weight:600;{% if line.is_long %}background-color:#fffbeb;color:#d97706;{% endif %}">{{ line.days_display }}</td>
-          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#4b5563;{% if line.is_long %}background-color:#fffbeb;{% endif %}">{{ line.dates_label }}</td>
+          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#111827;font-weight:600;">{{ line.employee_name }}</td>
+          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#4b5563;">{{ line.leave_type }}</td>
+          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#111827;font-weight:600;">{{ line.days_display }}</td>
+          <td style="padding:12px 16px;border-top:1px solid #f3f4f6;font-size:13px;color:#4b5563;">{{ line.dates_label }}</td>
         </tr>
         {% endfor %}
+      </table>
+    </td>
+  </tr>
+  {% else %}
+  <tr>
+    <td style="padding-bottom:28px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
+        <tr>
+          <td style="padding:24px;text-align:center;">
+            <p style="margin:0;color:#6b7280;font-size:14px;">Aucun congé approuvé sur cette période.</p>
+          </td>
+        </tr>
       </table>
     </td>
   </tr>

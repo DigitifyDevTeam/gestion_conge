@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from .email_notifications import send_admin_alert_email
+from .permissions import can_have_leave
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
     HalfDayPeriod,
@@ -37,7 +38,6 @@ STATUS_FR = {
 ROLE_FR = {
     UserRole.EMPLOYEE: 'Employé',
     UserRole.ADMIN: 'Administrateur',
-    UserRole.COMPTABLE: 'Comptable',
 }
 
 LEAVE_TYPE_FR = {
@@ -135,6 +135,7 @@ def notify_admins(
     )
     if email_action and email_category:
         actor_name = _person_name(email_actor) if email_actor else ''
+        cta_label = 'Voir les demandes' if email_category == 'leave_request' else 'Ouvrir le tableau de bord'
         send_admin_alert_email(
             subject=email_subject or f'Gestion de congé — {title}',
             title=title,
@@ -144,11 +145,36 @@ def notify_admins(
             actor_name=actor_name,
             details=email_details,
             cta_path=email_cta_path,
+            cta_label=cta_label,
             exclude_user=exclude_user,
         )
 
 
+def ensure_employee_leave_balances(user):
+    if not can_have_leave(user):
+        return
+    for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
+        LeaveBalance.objects.get_or_create(
+            user=user,
+            type=leave_type,
+            defaults={
+                'total': total,
+                'used': 0,
+                'pending': 0,
+            },
+        )
+
+
+def remove_leave_data_for_user(user):
+    LeaveRequest.objects.filter(employee=user).delete()
+    LeaveBalance.objects.filter(user=user).delete()
+
+
 def get_or_create_balance(user, leave_type):
+    if not can_have_leave(user):
+        raise ValidationError(
+            {'employee': 'Seuls les employés peuvent avoir des congés.'}
+        )
     balance, _ = LeaveBalance.objects.get_or_create(
         user=user,
         type=leave_type,
@@ -353,6 +379,11 @@ def create_leave_request(
     reason='',
     emergency=False,
 ):
+    if not can_have_leave(employee):
+        raise ValidationError(
+            {'employee': 'Seuls les employés peuvent avoir des congés.'}
+        )
+
     if leave_type not in REQUESTABLE_LEAVE_TYPES:
         raise ValidationError(
             {'type': 'Seuls les congés annuels et sans solde sont autorisés.'}

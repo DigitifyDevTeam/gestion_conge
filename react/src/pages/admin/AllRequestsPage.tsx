@@ -149,13 +149,15 @@ export default function AllRequestsPage() {
 
   const isReviewPending = approveMutation.isPending || rejectMutation.isPending;
 
+  const employees = users.filter((user) => user.role === 'employee');
+
   const handleExport = async () => {
     const year = new Date().getFullYear();
     setExporting(true);
     try {
       await downloadLeavePlanningExcel({
         year,
-        users,
+        users: employees,
         requests: allRequests,
         publicHolidays,
       });

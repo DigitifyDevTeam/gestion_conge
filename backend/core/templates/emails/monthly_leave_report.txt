@@ -1,4 +1,4 @@
-Gestion de congé — Rapport mensuel des congés
+Agence BWEB 1750836V — Rapport mensuel des congés
 {{ month_label }}
 ========================================
 
@@ -9,25 +9,16 @@ SYNTHÈSE
 Employés concernés : {{ employees_count }}
 Nombre de congés   : {{ total_requests }}
 Total jours        : {{ total_days_display }}
-Absences +5 jours  : {{ long_leave_count }}
-
-{% if narrative_lines %}
-RÉCAPITULATIF
--------------
-{% for line in narrative_lines %}
-{% if line.is_long %}* {% else %}- {% endif %}{{ line.narrative }}
-{% endfor %}
-{% else %}
-Aucun congé approuvé sur cette période.
-{% endif %}
 
 {% if leave_lines %}
 DÉTAIL DES CONGÉS
 -----------------
 {% for line in leave_lines %}
-{{ line.employee_name }} | {{ line.leave_type }} | {{ line.days_display }} | {{ line.dates_label }}{% if line.is_long %} [+5 jours]{% endif %}
+{{ line.employee_name }} | {{ line.leave_type }} | {{ line.days_display }} | {{ line.dates_label }}
 
 {% endfor %}
+{% else %}
+Aucun congé approuvé sur cette période.
 {% endif %}
 
 {% if holidays %}

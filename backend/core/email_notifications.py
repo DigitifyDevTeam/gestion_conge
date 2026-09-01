@@ -73,10 +73,20 @@ def send_admin_alert_email(
 ) -> int:
     """Send a branded HTML alert to all active admins. Returns emails sent count."""
     if not settings.EMAIL_HOST_USER:
+        logger.warning(
+            'Admin alert email skipped (%s / %s): EMAIL_HOST_USER is not configured.',
+            category,
+            action,
+        )
         return 0
 
     recipients = _admin_recipients(exclude_user=exclude_user)
     if not recipients:
+        logger.warning(
+            'Admin alert email skipped (%s / %s): no active admin recipients found.',
+            category,
+            action,
+        )
         return 0
 
     badge_bg, badge_color = ACTION_STYLES.get(action, ('#f3f4f6', '#374151'))
@@ -113,6 +123,22 @@ def send_admin_alert_email(
                 sent += 1
         except Exception:
             logger.exception('Failed to send admin alert email to %s', recipient)
+
+    if sent:
+        logger.info(
+            'Admin alert email sent (%s / %s) to %d admin(s): %s',
+            category,
+            action,
+            sent,
+            ', '.join(recipients),
+        )
+    else:
+        logger.warning(
+            'Admin alert email failed (%s / %s) for recipients: %s',
+            category,
+            action,
+            ', '.join(recipients),
+        )
     return sent
 
 
@@ -128,16 +154,18 @@ def _format_days_display(value) -> str:
 
 
 def send_monthly_leave_report_email(*, report, recipients: list[str] | None = None) -> int:
-    """Send the monthly leave report to comptable users (or explicit recipients)."""
+    """Send the monthly leave report to the configured accountant email."""
     if not settings.EMAIL_HOST_USER:
         return 0
 
     if recipients is None:
-        from .monthly_leave_report import accountant_recipients
+        from .monthly_leave_report import monthly_report_recipients
 
-        recipients = accountant_recipients()
+        recipients = monthly_report_recipients()
     if not recipients:
-        logger.warning('No comptable recipients found for monthly leave report.')
+        logger.warning(
+            'No monthly report recipient configured (set ACCOUNTANT_EMAIL).'
+        )
         return 0
 
     subject = f'Gestion de congé — Rapport mensuel des congés ({report.month_label})'
@@ -148,13 +176,7 @@ def send_monthly_leave_report_email(*, report, recipients: list[str] | None = No
             'leave_type': line.leave_type,
             'days_display': _format_days_display(line.days),
             'dates_label': line.dates_label,
-            'is_long': line.is_long,
-            'reason': line.reason,
         }
-        for line in report.leave_lines
-    ]
-    narrative_lines = [
-        {'narrative': line.narrative, 'is_long': line.is_long}
         for line in report.leave_lines
     ]
     holidays = [
@@ -173,9 +195,7 @@ def send_monthly_leave_report_email(*, report, recipients: list[str] | None = No
         'employees_count': report.employees_count,
         'total_requests': report.total_requests,
         'total_days_display': _format_days_display(report.total_days),
-        'long_leave_count': report.long_leave_count,
         'leave_lines': leave_lines,
-        'narrative_lines': narrative_lines,
         'holidays': holidays,
         'generated_at': _format_timestamp(),
         'year': datetime.now().year,

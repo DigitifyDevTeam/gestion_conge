@@ -6,7 +6,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .invites import send_activation_email, send_comptable_welcome_email
+from .invites import send_activation_email
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
     EmployeeProfile,
@@ -17,7 +17,7 @@ from .models import (
     PublicHoliday,
     UserRole,
 )
-from .permissions import is_admin_user
+from .permissions import can_have_leave, is_admin_user
 from . import services
 
 
@@ -49,16 +49,6 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
                             }
                         )
                     raise AuthenticationFailed({'detail': 'Ce compte est désactivé.'})
-                profile = getattr(user, 'profile', None)
-                if profile and profile.role == UserRole.COMPTABLE:
-                    raise AuthenticationFailed(
-                        {
-                            'detail': (
-                                'Les comptes comptables ne peuvent pas se connecter '
-                                'à l\'application. Vous recevez les rapports par e-mail.'
-                            ),
-                        }
-                    )
         data = super().validate(attrs)
         return data
 
@@ -135,6 +125,8 @@ class UserSerializer(serializers.ModelSerializer):
         last_name = validated_data.get('last_name') or self._split_name(name)[1]
         email = validated_data['email'].lower().strip()
         role = request_data.get('role', UserRole.EMPLOYEE)
+        if role not in {UserRole.EMPLOYEE, UserRole.ADMIN}:
+            raise serializers.ValidationError({'role': 'Rôle invalide.'})
         user = User(
             username=email,
             email=email,
@@ -156,19 +148,14 @@ class UserSerializer(serializers.ModelSerializer):
             avatar=request_data.get('avatar', ''),
             email_verified=False,
         )
-        if role != UserRole.COMPTABLE:
+        if role == UserRole.EMPLOYEE:
             for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
                 LeaveBalance.objects.get_or_create(
                     user=user,
                     type=leave_type,
                     defaults={'total': total, 'used': 0, 'pending': 0},
                 )
-            self.invitation_sent = send_activation_email(user=user)
-        else:
-            self.invitation_sent = send_comptable_welcome_email(
-                email=email,
-                name=user.get_full_name() or email,
-            )
+        self.invitation_sent = send_activation_email(user=user)
         return user
 
     def update(self, instance, validated_data):
@@ -193,10 +180,22 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
 
         profile, _ = EmployeeProfile.objects.get_or_create(user=instance)
+        previous_role = profile.role
+        if 'role' in request_data:
+            role = request_data.get('role')
+            if role not in {UserRole.EMPLOYEE, UserRole.ADMIN}:
+                raise serializers.ValidationError({'role': 'Rôle invalide.'})
         for field in ('role', 'department', 'position', 'avatar'):
             if field in request_data:
                 setattr(profile, field, request_data.get(field) or '')
         profile.save()
+
+        new_role = profile.role
+        if previous_role == UserRole.EMPLOYEE and new_role != UserRole.EMPLOYEE:
+            services.remove_leave_data_for_user(instance)
+        elif previous_role != UserRole.EMPLOYEE and new_role == UserRole.EMPLOYEE:
+            services.ensure_employee_leave_balances(instance)
+
         return instance
 
 
@@ -527,6 +526,10 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         employee = request.user
         if is_admin_user(request.user) and self.initial_data.get('employee_id'):
             employee = User.objects.get(pk=self.initial_data['employee_id'])
+        if not can_have_leave(employee):
+            raise serializers.ValidationError(
+                {'employee': 'Seuls les employés peuvent avoir des congés.'}
+            )
         validated_data.pop('days', None)
         dates = validated_data.pop('day_payload', None)
         emergency = validated_data.pop('emergency', False)
