@@ -1,0 +1,20 @@
+# Monthly leave report — automatic send on the last day of each month
+#
+# Period covered: 1st → last day of the current month (e.g. 01/08/2026 → 31/08/2026).
+# Recipient: ACCOUNTANT_EMAIL in backend/.env.production
+# CC: EMAIL_CC (webdev@digitify.fr)
+#
+# Install on the VPS (crontab -e for user rh.digitify.fr):
+#
+#   CRON_TZ=Africa/Tunis
+#   0 18 28-31 * * cd /home/rh.digitify.fr/gestion_conge/backend && APP_ENV=production ./venv/bin/python manage.py send_monthly_leave_report --scheduled >> /home/rh.digitify.fr/logs/monthly-leave-report.log 2>&1
+#
+# Runs on days 28–31; the command only sends when today is the actual last day
+# (handles February and 30-day months).
+#
+# Manual send for a specific month:
+#   cd ~/gestion_conge/backend
+#   APP_ENV=production python manage.py send_monthly_leave_report --year 2026 --month 8
+#
+# Preview without sending:
+#   APP_ENV=production python manage.py send_monthly_leave_report --year 2026 --month 8 --dry-run

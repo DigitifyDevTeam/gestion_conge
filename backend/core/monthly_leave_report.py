@@ -76,6 +76,15 @@ def _format_date(value: date) -> str:
     return value.strftime('%d/%m/%y')
 
 
+def _format_period_date(value: date) -> str:
+    return value.strftime('%d/%m/%Y')
+
+
+def is_last_day_of_month(value: date | None = None) -> bool:
+    today = value or date.today()
+    return today.day == monthrange(today.year, today.month)[1]
+
+
 def _format_days(value: Decimal) -> str:
     number = Decimal(value)
     if number == number.to_integral_value():
@@ -190,7 +199,7 @@ def build_monthly_leave_report(year: int, month: int) -> MonthlyLeaveReport:
     ]
 
     month_label = f'{MONTH_NAMES_FR[month]} {year}'.capitalize()
-    period_label = f'{_format_date(period_start)} → {_format_date(period_end)}'
+    period_label = f'{_format_period_date(period_start)} → {_format_period_date(period_end)}'
 
     return MonthlyLeaveReport(
         year=year,
