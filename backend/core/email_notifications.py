@@ -142,6 +142,80 @@ def send_admin_alert_email(
     return sent
 
 
+def send_employee_leave_decision_email(
+    *,
+    recipient_email: str,
+    subject: str,
+    title: str,
+    message: str,
+    action: str,
+    actor_name: str = '',
+    details: list[tuple[str, str]] | None = None,
+    cta_path: str = '/requests',
+    cta_label: str = 'Voir mes demandes',
+) -> int:
+    """Notify the employee by email when their leave request is approved or rejected."""
+    if not settings.EMAIL_HOST_USER:
+        logger.warning(
+            'Employee leave decision email skipped (%s): EMAIL_HOST_USER is not configured.',
+            action,
+        )
+        return 0
+
+    email = (recipient_email or '').strip()
+    if not email:
+        logger.warning(
+            'Employee leave decision email skipped (%s): employee has no email.',
+            action,
+        )
+        return 0
+
+    badge_bg, badge_color = ACTION_STYLES.get(action, ('#f3f4f6', '#374151'))
+    frontend = settings.FRONTEND_URL.rstrip('/')
+    cta_url = f'{frontend}{cta_path}' if cta_path else ''
+
+    context = {
+        'subject': subject,
+        'title': title,
+        'message': message,
+        'badge_label': _build_badge(action, 'leave_request'),
+        'badge_bg': badge_bg,
+        'badge_color': badge_color,
+        'actor_name': actor_name,
+        'details': details or [],
+        'cta_url': cta_url,
+        'cta_label': cta_label,
+        'timestamp': _format_timestamp(),
+        'year': datetime.now().year,
+    }
+
+    html_body = render_to_string('emails/admin_alert.html', context)
+    text_body = render_to_string('emails/admin_alert.txt', context)
+
+    try:
+        if send_branded_email(
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            to=[email],
+        ):
+            logger.info(
+                'Employee leave decision email sent (%s) to %s',
+                action,
+                email,
+            )
+            return 1
+    except Exception:
+        logger.exception('Failed to send employee leave decision email to %s', email)
+
+    logger.warning(
+        'Employee leave decision email failed (%s) for recipient: %s',
+        action,
+        email,
+    )
+    return 0
+
+
 def _format_days_display(value) -> str:
     from decimal import Decimal
 

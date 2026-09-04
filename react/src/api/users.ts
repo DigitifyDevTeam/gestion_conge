@@ -6,7 +6,7 @@ interface ApiUser {
   id: number | string;
   email: string;
   name: string;
-  role: 'employee' | 'admin';
+  role?: 'employee' | 'admin' | null;
   department?: string;
   position?: string;
   avatar?: string;
@@ -21,8 +21,9 @@ function mapCreateUser(u: ApiUser): CreateUserResult {
   };
 }
 
-export async function listUsers(): Promise<User[]> {
-  const data = await apiFetch<ApiUser[]>('/users/');
+export async function listUsers(role?: 'employee' | 'admin'): Promise<User[]> {
+  const qs = role ? `?role=${role}` : '';
+  const data = await apiFetch<ApiUser[]>(`/users/${qs}`);
   return data.map(mapUser);
 }
 

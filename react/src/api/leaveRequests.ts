@@ -115,6 +115,8 @@ export interface LeaveRequestPayload {
   dates: LeaveDay[];
   reason: string;
   emergency?: boolean;
+  /** Admin-only: create leave on behalf of this employee */
+  employeeId?: string;
 }
 
 function serializePayload(payload: LeaveRequestPayload) {
@@ -126,6 +128,7 @@ function serializePayload(payload: LeaveRequestPayload) {
     })),
     reason: payload.reason.trim(),
     emergency: Boolean(payload.emergency),
+    ...(payload.employeeId ? { employee_id: Number(payload.employeeId) } : {}),
   });
 }
 

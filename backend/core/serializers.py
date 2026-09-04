@@ -87,7 +87,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_role(self, obj):
         profile = self._profile(obj)
-        return profile.role if profile else UserRole.EMPLOYEE
+        return profile.role if profile else None
 
     def get_department(self, obj):
         profile = self._profile(obj)
@@ -524,8 +524,16 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context['request']
         employee = request.user
-        if is_admin_user(request.user) and self.initial_data.get('employee_id'):
-            employee = User.objects.get(pk=self.initial_data['employee_id'])
+        on_behalf = False
+        raw_employee_id = self.initial_data.get('employee_id')
+        if is_admin_user(request.user) and raw_employee_id not in (None, ''):
+            try:
+                employee = User.objects.select_related('profile').get(pk=raw_employee_id)
+            except (User.DoesNotExist, TypeError, ValueError) as exc:
+                raise serializers.ValidationError(
+                    {'employee_id': 'Employé introuvable.'}
+                ) from exc
+            on_behalf = employee.pk != request.user.pk
         if not can_have_leave(employee):
             raise serializers.ValidationError(
                 {'employee': 'Seuls les employés peuvent avoir des congés.'}
@@ -543,6 +551,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             dates=dates,
             reason=validated_data.get('reason', ''),
             emergency=emergency,
+            allow_past=on_behalf,
+            auto_approve=on_behalf,
+            reviewer=request.user if on_behalf else None,
         )
 
     def update(self, instance, validated_data):

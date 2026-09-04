@@ -6,7 +6,7 @@ from .models import UserRole
 def user_role(user):
     profile = getattr(user, 'profile', None)
     if profile is None:
-        return UserRole.EMPLOYEE
+        return None
     return profile.role
 
 
@@ -19,6 +19,7 @@ def is_employee_user(user):
 
 
 def can_have_leave(user):
+    """Only users with an employee profile can hold leave balances/requests."""
     return is_employee_user(user)
 
 

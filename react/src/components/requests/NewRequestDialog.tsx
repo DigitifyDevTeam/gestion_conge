@@ -53,11 +53,15 @@ import {
 import { ApiError } from '@/api/client';
 import { listMyBalances } from '@/api/leaveBalances';
 import { listPublicHolidays } from '@/api/publicHolidays';
+import { User } from '@/types/auth';
 
 interface NewRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   requestToEdit?: HolidayRequest | null;
+  /** Admin: pick an employee and allow past days (retroactive / urgent leave). */
+  adminMode?: boolean;
+  employees?: User[];
 }
 
 type DayDuration = 'full' | 'half';
@@ -102,11 +106,17 @@ function withDuration(day: LeaveDay, duration: DayDuration): LeaveDay {
   }
 }
 
-function submitButtonLabel(isEditing: boolean, isPending: boolean): string {
+function submitButtonLabel(
+  isEditing: boolean,
+  isPending: boolean,
+  adminMode: boolean,
+): string {
   if (isPending) {
-    return isEditing ? 'Enregistrement...' : 'Envoi...';
+    if (isEditing) return 'Enregistrement...';
+    return adminMode ? 'Enregistrement...' : 'Envoi...';
   }
-  return isEditing ? 'Enregistrer les modifications' : 'Soumettre la demande';
+  if (isEditing) return 'Enregistrer les modifications';
+  return adminMode ? 'Enregistrer et approuver' : 'Soumettre la demande';
 }
 
 function extractIsoDates(message: string): string[] {
@@ -145,7 +155,13 @@ function RequestCalendarDayContent({ date }: { date: Date }) {
   );
 }
 
-export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewRequestDialogProps) {
+export function NewRequestDialog({
+  open,
+  onOpenChange,
+  requestToEdit,
+  adminMode = false,
+  employees = [],
+}: NewRequestDialogProps) {
   const queryClient = useQueryClient();
   const isEditing = Boolean(requestToEdit);
   const [selectedType, setSelectedType] = useState<HolidayType>('annual');
@@ -155,11 +171,21 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   const [apiConflictKeys, setApiConflictKeys] = useState<string[]>([]);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfDay(new Date()));
   const [emergencyMode, setEmergencyMode] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+
+  const employeeOptions = useMemo(
+    () =>
+      employees
+        .filter((user) => user.role === 'employee')
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    [employees],
+  );
 
   useQuery({
     queryKey: ['leave-balances', 'me'],
     queryFn: listMyBalances,
-    enabled: open,
+    enabled: open && !adminMode,
   });
   const { data: existingRequests = [] } = useQuery({
     queryKey: ['leave-requests'],
@@ -190,6 +216,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     setOtherReason('');
     setApiConflictKeys([]);
     setEmergencyMode(false);
+    setSelectedEmployeeId('');
   };
 
   useEffect(() => {
@@ -211,6 +238,7 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     setReasonChoice(parsed.choice);
     setOtherReason(parsed.otherDetail);
     setApiConflictKeys([]);
+    setSelectedEmployeeId(requestToEdit.employeeId || '');
     const noticeDate = earliestLeaveDate(new Date(), false);
     setEmergencyMode(
       Boolean(requestToEdit.emergency) ||
@@ -235,12 +263,17 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
       if (requestToEdit && request.id === requestToEdit.id) {
         continue;
       }
+      if (adminMode) {
+        if (!selectedEmployeeId || request.employeeId !== selectedEmployeeId) {
+          continue;
+        }
+      }
       for (const day of request.dates) {
         dates.push(startOfDay(new Date(day.date)));
       }
     }
     return dates;
-  }, [existingRequests, requestToEdit]);
+  }, [existingRequests, requestToEdit, adminMode, selectedEmployeeId]);
 
   const occupiedKeys = useMemo(
     () => new Set(occupiedDates.map(toDateKey)),
@@ -265,8 +298,10 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     onSuccess: () => {
       invalidate();
       toast({
-        title: 'Demande soumise',
-        description: 'Votre demande a été soumise pour approbation.',
+        title: adminMode ? 'Congé enregistré' : 'Demande soumise',
+        description: adminMode
+          ? 'La demande a été saisie et approuvée pour l’employé.'
+          : 'Votre demande a été soumise pour approbation.',
       });
       resetForm();
       onOpenChange(false);
@@ -294,7 +329,10 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   });
 
   const today = startOfDay(new Date());
-  const minSelectableDate = earliestLeaveDate(today, emergencyMode);
+  const allowPastDays = adminMode && !isEditing;
+  const minSelectableDate = allowPastDays
+    ? undefined
+    : earliestLeaveDate(today, emergencyMode);
   const sortedDays = useMemo(() => sortLeaveDays(selectedDays), [selectedDays]);
   const resolvedDays = sumLeaveDayValues(sortedDays);
   const selectedDates = sortedDays.map((day) => day.date);
@@ -321,10 +359,18 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   const busyDates = occupiedDates.filter((date) => !selectedKeySet.has(toDateKey(date)));
   const hasConflicts = conflictKeys.size > 0;
 
-  const isDaySelectable = (day: Date) =>
-    startOfDay(day) >= minSelectableDate && isWorkingDay(day, holidayKeys);
+  const isDaySelectable = (day: Date) => {
+    const normalized = startOfDay(day);
+    if (minSelectableDate && normalized < minSelectableDate) {
+      return false;
+    }
+    return isWorkingDay(day, holidayKeys);
+  };
 
   const handleEmergencyToggle = () => {
+    if (allowPastDays) {
+      return;
+    }
     setEmergencyMode((current) => {
       const next = !current;
       if (!next) {
@@ -335,6 +381,12 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
       }
       return next;
     });
+  };
+
+  const handleEmployeeChange = (employeeId: string) => {
+    setSelectedEmployeeId(employeeId);
+    setSelectedDays([]);
+    setApiConflictKeys([]);
   };
 
   const handleCalendarSelect = (dates: Date[] | undefined) => {
@@ -367,6 +419,15 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
   };
 
   const handleSubmit = () => {
+    if (adminMode && !isEditing && !selectedEmployeeId) {
+      toast({
+        title: 'Employé requis',
+        description: 'Sélectionnez l’employé concerné par cette demande.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (sortedDays.length === 0) {
       toast({
         title: 'Veuillez sélectionner les jours',
@@ -378,12 +439,13 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
 
     const invalidDay = sortedDays.find((day) => !isDaySelectable(day.date));
     if (invalidDay) {
-      const tooSoon = startOfDay(invalidDay.date) < minSelectableDate;
+      const tooSoon =
+        Boolean(minSelectableDate) && startOfDay(invalidDay.date) < minSelectableDate!;
       toast({
         title: tooSoon ? `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours` : 'Jour invalide',
         description: tooSoon
-          ? `Les congés doivent commencer au plus tôt le ${format(minSelectableDate, 'd MMMM yyyy', { locale: fr })}. Activez le mode urgence pour aujourd’hui ou demain.`
-          : `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est passé, un week-end ou un jour férié.`,
+          ? `Les congés doivent commencer au plus tôt le ${format(minSelectableDate!, 'd MMMM yyyy', { locale: fr })}. Activez le mode urgence pour aujourd’hui ou demain.`
+          : `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est un week-end ou un jour férié.`,
         variant: 'destructive',
       });
       return;
@@ -421,7 +483,8 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
       type: selectedType,
       dates: sortedDays,
       reason: composeLeaveReason(reasonChoice, otherReason),
-      emergency: emergencyMode,
+      emergency: allowPastDays || emergencyMode,
+      ...(adminMode && selectedEmployeeId ? { employeeId: selectedEmployeeId } : {}),
     };
     if (isEditing) {
       updateMutation.mutate(payload);
@@ -430,6 +493,25 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
     createMutation.mutate(payload);
   };
 
+  const dialogTitle = isEditing
+    ? 'Modifier la demande'
+    : adminMode
+      ? 'Demande de congé (admin)'
+      : 'Demander un congé';
+
+  let dialogDescription: string;
+  if (adminMode && !isEditing) {
+    dialogDescription =
+      'Saisissez un congé pour un employé, y compris des jours passés (congé urgent non déclaré). La demande sera approuvée immédiatement.';
+  } else if (emergencyMode) {
+    dialogDescription =
+      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants.';
+  } else if (minSelectableDate) {
+    dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`;
+  } else {
+    dialogDescription = 'Sélectionnez les jours de congé.';
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -437,30 +519,54 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
       >
         <div className="leave-request-header flex items-start justify-between gap-3 pr-8">
           <div className="min-w-0 space-y-1">
-            <DialogTitle>
-              {isEditing ? 'Modifier la demande' : 'Demander un congé'}
-            </DialogTitle>
-            <DialogDescription>
-              {emergencyMode
-                ? 'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants.'
-                : `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`}
-            </DialogDescription>
+            <DialogTitle>{dialogTitle}</DialogTitle>
+            <DialogDescription>{dialogDescription}</DialogDescription>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant={emergencyMode ? 'destructive' : 'outline'}
-            aria-pressed={emergencyMode}
-            onClick={handleEmergencyToggle}
-            className="shrink-0"
-          >
-            <Siren className="h-4 w-4" />
-            Mode urgence
-          </Button>
+          {!allowPastDays && (
+            <Button
+              type="button"
+              size="sm"
+              variant={emergencyMode ? 'destructive' : 'outline'}
+              aria-pressed={emergencyMode}
+              onClick={handleEmergencyToggle}
+              className="shrink-0"
+            >
+              <Siren className="h-4 w-4" />
+              Mode urgence
+            </Button>
+          )}
         </div>
 
-        <div className="leave-request-grid grid min-h-0 grid-cols-1 gap-x-4 gap-y-2 overflow-y-auto sm:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)] sm:grid-rows-[auto_auto_auto] sm:overflow-hidden">
-          <div className="space-y-1.5 sm:col-start-2 sm:row-start-1">
+        <div className="leave-request-grid grid min-h-0 grid-cols-1 gap-x-4 gap-y-2 overflow-y-auto sm:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)] sm:grid-rows-[auto_auto_auto_auto] sm:overflow-hidden">
+          {adminMode && !isEditing && (
+            <div className="space-y-1.5 sm:col-start-2 sm:row-start-1">
+              <Label className="text-sm font-medium">
+                Employé <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={selectedEmployeeId || undefined}
+                onValueChange={handleEmployeeChange}
+              >
+                <SelectTrigger className="h-9" aria-required="true">
+                  <SelectValue placeholder="Choisir un employé" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employeeOptions.map((user) => (
+                    <SelectItem key={user.id} value={String(user.id)}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div
+            className={cn(
+              'space-y-1.5 sm:col-start-2',
+              adminMode && !isEditing ? 'sm:row-start-2' : 'sm:row-start-1',
+            )}
+          >
             <Label className="text-sm font-medium">Type de congé</Label>
             <div className="grid grid-cols-2 gap-2">
               {holidayTypes.map(({ type, label, icon: Icon, description }) => (
@@ -506,10 +612,12 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
                     setVisibleMonth(startOfDay(day));
                   }
                 }}
-                disabled={(day) => !isDaySelectable(day)}
+                disabled={(day) =>
+                  (adminMode && !isEditing && !selectedEmployeeId) || !isDaySelectable(day)
+                }
                 month={visibleMonth}
                 onMonthChange={setVisibleMonth}
-                fromDate={today}
+                {...(allowPastDays ? {} : { fromDate: today })}
                 fixedWeeks
                 modifiers={{
                   half: halfDates,
@@ -570,7 +678,12 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
             </div>
           </div>
 
-          <div className="shrink-0 space-y-1.5 sm:col-start-1 sm:row-start-3">
+          <div
+            className={cn(
+              'shrink-0 space-y-1.5 sm:col-start-1',
+              adminMode && !isEditing ? 'sm:row-start-4' : 'sm:row-start-3',
+            )}
+          >
             <Label className="text-sm font-medium">
               Raison <span className="text-destructive">*</span>
             </Label>
@@ -615,7 +728,12 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
             </div>
           </div>
 
-          <div className="leave-request-days flex min-h-0 flex-col overflow-hidden rounded-lg border border-border sm:col-start-2 sm:row-span-2 sm:row-start-2">
+          <div
+            className={cn(
+              'leave-request-days flex min-h-0 flex-col overflow-hidden rounded-lg border border-border sm:col-start-2 sm:row-span-2',
+              adminMode && !isEditing ? 'sm:row-start-3' : 'sm:row-start-2',
+            )}
+          >
             {hasConflicts && (
               <div
                 role="alert"
@@ -686,7 +804,9 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
                 </ul>
               ) : (
                 <div className="leave-request-days-empty flex h-full min-h-[8rem] items-center justify-center px-3 text-center text-sm text-muted-foreground">
-                  Aucun jour sélectionné
+                  {adminMode && !selectedEmployeeId
+                    ? 'Choisissez d’abord un employé'
+                    : 'Aucun jour sélectionné'}
                 </div>
               )}
             </div>
@@ -712,10 +832,17 @@ export function NewRequestDialog({ open, onOpenChange, requestToEdit }: NewReque
             size="sm"
             onClick={handleSubmit}
             disabled={
-              createMutation.isPending || updateMutation.isPending || hasConflicts
+              createMutation.isPending ||
+              updateMutation.isPending ||
+              hasConflicts ||
+              (adminMode && !isEditing && !selectedEmployeeId)
             }
           >
-            {submitButtonLabel(isEditing, createMutation.isPending || updateMutation.isPending)}
+            {submitButtonLabel(
+              isEditing,
+              createMutation.isPending || updateMutation.isPending,
+              adminMode,
+            )}
           </Button>
         </div>
       </DialogContent>

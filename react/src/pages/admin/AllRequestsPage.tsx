@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Filter, Download, Eye, Check, X } from 'lucide-react';
+import { Search, Filter, Download, Eye, Check, X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,7 @@ import {
   halfDayPeriodLabel,
 } from '@/lib/leave';
 import { downloadLeavePlanningExcel } from '@/lib/exportLeavePlanning';
+import { NewRequestDialog } from '@/components/requests/NewRequestDialog';
 
 const typeLabels: Record<HolidayType, string> = {
   annual: 'Congés annuels',
@@ -66,8 +67,8 @@ export default function AllRequestsPage() {
     queryFn: () => listLeaveRequests(),
   });
   const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: listUsers,
+    queryKey: ['users', 'employee'],
+    queryFn: () => listUsers('employee'),
   });
   const { data: publicHolidays = [] } = useQuery({
     queryKey: ['public-holidays'],
@@ -78,6 +79,7 @@ export default function AllRequestsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | null>(null);
   const [comment, setComment] = useState('');
+  const [newRequestOpen, setNewRequestOpen] = useState(false);
 
   const filteredRequests = allRequests.filter(request => {
     if (searchQuery && !request.employeeName.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -184,10 +186,16 @@ export default function AllRequestsPage() {
           <h1 className="text-2xl font-bold text-foreground">Toutes les demandes</h1>
           <p className="text-muted-foreground mt-1">Gérez toutes les demandes de congés</p>
         </div>
-        <Button variant="outline" onClick={handleExport} disabled={exporting}>
-          <Download className="w-4 h-4 mr-2" />
-          {exporting ? 'Export...' : 'Exporter le planning'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setNewRequestOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Demande de congé
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            <Download className="w-4 h-4 mr-2" />
+            {exporting ? 'Export...' : 'Exporter le planning'}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -521,6 +529,13 @@ export default function AllRequestsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <NewRequestDialog
+        open={newRequestOpen}
+        onOpenChange={setNewRequestOpen}
+        adminMode
+        employees={users}
+      />
     </div>
   );
 }

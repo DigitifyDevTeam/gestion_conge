@@ -10,7 +10,7 @@ interface ApiUser {
   id: number | string;
   email: string;
   name: string;
-  role: 'employee' | 'admin';
+  role?: 'employee' | 'admin' | null;
   department?: string;
   position?: string;
   avatar?: string;
@@ -22,7 +22,7 @@ export function mapUser(u: ApiUser): User {
     id: String(u.id),
     email: u.email,
     name: u.name,
-    role: u.role,
+    role: u.role === 'admin' ? 'admin' : 'employee',
     department: u.department || undefined,
     position: u.position || undefined,
     avatar: u.avatar || undefined,

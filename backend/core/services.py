@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from .email_notifications import send_admin_alert_email
+from .email_notifications import send_admin_alert_email, send_employee_leave_decision_email
 from .permissions import can_have_leave
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
@@ -106,6 +106,15 @@ def _leave_request_details(request: LeaveRequest) -> list[tuple[str, str]]:
     if request.emergency:
         details.append(('Mode urgence', 'Oui'))
     return details
+
+
+def _employee_leave_decision_details(request: LeaveRequest) -> list[tuple[str, str]]:
+    """Leave details for the employee recipient (omit their own name)."""
+    return [
+        (label, value)
+        for label, value in _leave_request_details(request)
+        if label != 'Employé'
+    ]
 
 
 def notify_admins(
@@ -288,7 +297,7 @@ def _normalize_period(value):
     return period
 
 
-def _validate_leave_dates(entries, *, emergency=False):
+def _validate_leave_dates(entries, *, emergency=False, allow_past=False):
     if not entries:
         raise ValidationError({'dates': 'Sélectionnez au moins une journée.'})
 
@@ -304,12 +313,12 @@ def _validate_leave_dates(entries, *, emergency=False):
 
     normalized.sort(key=lambda item: item['date'])
     today = date.today()
-    if normalized[0]['date'] < today:
+    if not allow_past and normalized[0]['date'] < today:
         raise ValidationError(
             {'dates': 'Les jours sélectionnés doivent être aujourd’hui ou dans le futur.'}
         )
 
-    if not emergency:
+    if not emergency and not allow_past:
         min_date = today + timedelta(days=MIN_LEAVE_NOTICE_DAYS)
         too_soon = [item['date'] for item in normalized if item['date'] < min_date]
         if too_soon:
@@ -378,6 +387,9 @@ def create_leave_request(
     dates,
     reason='',
     emergency=False,
+    allow_past=False,
+    auto_approve=False,
+    reviewer=None,
 ):
     if not can_have_leave(employee):
         raise ValidationError(
@@ -391,11 +403,77 @@ def create_leave_request(
 
     trimmed_reason = normalize_leave_reason(reason)
 
-    selected, resolved_days = _validate_leave_dates(dates, emergency=emergency)
+    # Admin backdated entries skip the employee notice window.
+    effective_emergency = emergency or allow_past
+    selected, resolved_days = _validate_leave_dates(
+        dates,
+        emergency=effective_emergency,
+        allow_past=allow_past,
+    )
     period = _request_level_period(selected)
 
     assert_no_overlap(employee, selected)
     balance = assert_sufficient_balance(employee, leave_type, resolved_days)
+
+    type_label = _leave_type_label(leave_type)
+    days_label = _days_label(resolved_days)
+
+    if auto_approve:
+        if reviewer is None:
+            raise ValidationError({'reviewer': 'Un administrateur est requis pour valider.'})
+        request = LeaveRequest.objects.create(
+            employee=employee,
+            type=leave_type,
+            start_date=selected[0]['date'],
+            end_date=selected[-1]['date'],
+            days=resolved_days,
+            half_day_period=period,
+            status=RequestStatus.APPROVED,
+            reason=trimmed_reason,
+            emergency=effective_emergency,
+            reviewed_by=reviewer,
+            reviewed_at=timezone.now(),
+            review_comment='Saisie administrative',
+        )
+        _sync_request_days(request, selected)
+        balance.used += resolved_days
+        balance.save(update_fields=['used'])
+        notify_user(
+            employee,
+            'Demande approuvée',
+            (
+                f'Une demande de {type_label} ({days_label}) a été saisie et approuvée '
+                f'par {_person_name(reviewer)}.'
+            ),
+            NotificationType.SUCCESS,
+        )
+        send_employee_leave_decision_email(
+            recipient_email=employee.email,
+            subject='Gestion de congé — Demande approuvée',
+            title='Demande approuvée',
+            message=(
+                f'Une demande de {type_label} ({days_label}) a été saisie et approuvée '
+                f'par {_person_name(reviewer)}.'
+            ),
+            action='approved',
+            actor_name=_person_name(reviewer),
+            details=_employee_leave_decision_details(request),
+        )
+        notify_admins(
+            'Demande saisie par un admin',
+            (
+                f'{_person_name(reviewer)} a saisi et approuvé {days_label} de {type_label} '
+                f'pour {_person_name(employee)}.'
+            ),
+            NotificationType.SUCCESS,
+            exclude_user=reviewer,
+            email_action='approved',
+            email_category='leave_request',
+            email_actor=reviewer,
+            email_details=_leave_request_details(request),
+            email_cta_path='/requests',
+        )
+        return request
 
     request = LeaveRequest.objects.create(
         employee=employee,
@@ -406,13 +484,11 @@ def create_leave_request(
         half_day_period=period,
         status=RequestStatus.PENDING,
         reason=trimmed_reason,
-        emergency=emergency,
+        emergency=effective_emergency,
     )
     _sync_request_days(request, selected)
     balance.pending += resolved_days
     balance.save(update_fields=['pending'])
-    type_label = _leave_type_label(leave_type)
-    days_label = _days_label(resolved_days)
     notify_user(
         employee,
         'Demande soumise',
@@ -543,11 +619,23 @@ def approve_leave_request(request: LeaveRequest, reviewer, comment=''):
 
     type_label = _leave_type_label(request.type)
     days_label = _days_label(request.days)
+    employee_message = (
+        f'Votre demande de {type_label} ({days_label}) a été approuvée.'
+    )
     notify_user(
         request.employee,
         'Demande approuvée',
-        f'Votre demande de {type_label} ({days_label}) a été approuvée.',
+        employee_message,
         NotificationType.SUCCESS,
+    )
+    send_employee_leave_decision_email(
+        recipient_email=request.employee.email,
+        subject='Gestion de congé — Demande approuvée',
+        title='Demande approuvée',
+        message=employee_message,
+        action='approved',
+        actor_name=_person_name(reviewer),
+        details=_employee_leave_decision_details(request),
     )
     notify_admins(
         'Demande approuvée',
@@ -583,11 +671,26 @@ def reject_leave_request(request: LeaveRequest, reviewer, comment=''):
         update_fields=['status', 'reviewed_by', 'reviewed_at', 'review_comment']
     )
 
+    employee_message = (
+        f'Votre demande de congé a été refusée. Raison : {trimmed}'
+    )
     Notification.objects.create(
         user=request.employee,
         title='Demande refusée',
-        message=f'Votre demande de congé a été refusée. Raison : {trimmed}',
+        message=employee_message,
         type=NotificationType.INFO,
+    )
+    send_employee_leave_decision_email(
+        recipient_email=request.employee.email,
+        subject='Gestion de congé — Demande refusée',
+        title='Demande refusée',
+        message=employee_message,
+        action='rejected',
+        actor_name=_person_name(reviewer),
+        details=[
+            *_employee_leave_decision_details(request),
+            ('Commentaire', trimmed),
+        ],
     )
     notify_admins(
         'Demande refusée',

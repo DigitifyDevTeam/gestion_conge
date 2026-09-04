@@ -32,12 +32,29 @@ const typeLabels: Record<ManagedLeaveType, string> = {
   unpaid: 'Congés sans solde',
 };
 
+const HALF_DAY_STEP = 0.5;
+
 function formatUsedDays(value: number): string {
   const n = Number(value);
   if (Number.isInteger(n)) {
     return String(n).padStart(2, '0');
   }
   return formatLeaveDaysNumber(n);
+}
+
+/** Parse leave-day amounts; accepts half-days (0.5, 2.5, …). */
+function parseLeaveDaysInput(raw: string): number | null {
+  const normalized = raw.trim().replace(',', '.');
+  if (!normalized) return null;
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return null;
+  const scaled = Math.round(value * 2);
+  if (Math.abs(value * 2 - scaled) > 1e-9) return null;
+  return scaled / 2;
+}
+
+function roundLeaveDays(value: number): number {
+  return Math.round(value * 2) / 2;
 }
 
 function BalanceTypeCell({
@@ -120,13 +137,21 @@ export default function BalanceManagementPage() {
   };
 
   const handleAdjustBalance = () => {
-    if (!adjustmentDialog || !adjustmentValue) return;
-    const value = parseInt(adjustmentValue);
-    if (isNaN(value)) {
-      toast({ title: 'Erreur', description: 'Veuillez entrer un nombre valide.', variant: 'destructive' });
+    if (!adjustmentDialog || !adjustmentValue.trim()) return;
+    const value = parseLeaveDaysInput(adjustmentValue);
+    if (value === null) {
+      toast({
+        title: 'Erreur',
+        description: 'Veuillez entrer un nombre valide (ex. 1, 0,5 ou 2,5).',
+        variant: 'destructive',
+      });
       return;
     }
-    const newTotal = Math.max(0, adjustmentDialog.currentTotal + value);
+    if (value === 0) {
+      toast({ title: 'Erreur', description: 'L’ajustement ne peut pas être zéro.', variant: 'destructive' });
+      return;
+    }
+    const newTotal = roundLeaveDays(Math.max(0, adjustmentDialog.currentTotal + value));
     patchMutation.mutate({ id: adjustmentDialog.balanceId, total: newTotal });
   };
 
@@ -157,9 +182,13 @@ export default function BalanceManagementPage() {
   };
 
   const handleSetAnnualAllocation = () => {
-    const value = Number(allocationValue);
-    if (!Number.isFinite(value) || value < 0) {
-      toast({ title: 'Erreur', description: 'Veuillez entrer un nombre valide.', variant: 'destructive' });
+    const value = parseLeaveDaysInput(allocationValue);
+    if (value === null || value < 0) {
+      toast({
+        title: 'Erreur',
+        description: 'Veuillez entrer un nombre valide (ex. 18 ou 18,5).',
+        variant: 'destructive',
+      });
       return;
     }
     allocationMutation.mutate(value);
@@ -313,9 +342,10 @@ export default function BalanceManagementPage() {
                 <Button
                   variant="outline"
                   size="icon"
+                  type="button"
                   onClick={() => {
-                    const current = parseInt(adjustmentValue) || 0;
-                    setAdjustmentValue((current - 1).toString());
+                    const current = parseLeaveDaysInput(adjustmentValue) ?? 0;
+                    setAdjustmentValue(String(roundLeaveDays(current - HALF_DAY_STEP)));
                   }}
                 >
                   <Minus className="w-4 h-4" />
@@ -323,6 +353,7 @@ export default function BalanceManagementPage() {
                 <Input
                   id="adjustment"
                   type="number"
+                  step={HALF_DAY_STEP}
                   value={adjustmentValue}
                   onChange={(e) => setAdjustmentValue(e.target.value)}
                   placeholder="0"
@@ -331,16 +362,17 @@ export default function BalanceManagementPage() {
                 <Button
                   variant="outline"
                   size="icon"
+                  type="button"
                   onClick={() => {
-                    const current = parseInt(adjustmentValue) || 0;
-                    setAdjustmentValue((current + 1).toString());
+                    const current = parseLeaveDaysInput(adjustmentValue) ?? 0;
+                    setAdjustmentValue(String(roundLeaveDays(current + HALF_DAY_STEP)));
                   }}
                 >
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Entrez un nombre positif pour ajouter, négatif pour soustraire
+                Entrez un nombre positif pour ajouter, négatif pour soustraire (demi-journées : 0,5 / 2,5…)
               </p>
             </div>
             <div className="flex justify-end gap-3 pt-4">
