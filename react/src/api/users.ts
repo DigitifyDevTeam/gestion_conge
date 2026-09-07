@@ -22,7 +22,11 @@ function mapCreateUser(u: ApiUser): CreateUserResult {
 }
 
 export async function listUsers(role?: 'employee' | 'admin'): Promise<User[]> {
-  const qs = role ? `?role=${role}` : '';
+  // Only accept real role strings — React Query passes a QueryFunctionContext
+  // when queryFn is set to `listUsers` directly; treating that as role
+  // produced `?role=[object Object]` and an empty list in prod.
+  const roleFilter = role === 'employee' || role === 'admin' ? role : undefined;
+  const qs = roleFilter ? `?role=${roleFilter}` : '';
   const data = await apiFetch<ApiUser[]>(`/users/${qs}`);
   return data.map(mapUser);
 }

@@ -108,7 +108,7 @@ export default function UserManagementPage() {
   const queryClient = useQueryClient();
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: listUsers,
+    queryFn: () => listUsers(),
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);

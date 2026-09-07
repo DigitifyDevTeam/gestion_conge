@@ -60,7 +60,7 @@ export default function ReportsPage() {
   });
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: listUsers,
+    queryFn: () => listUsers(),
   });
   const { data: publicHolidays = [] } = useQuery({
     queryKey: ['public-holidays'],

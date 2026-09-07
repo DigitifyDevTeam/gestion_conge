@@ -26,7 +26,7 @@ export default function AdminDashboard() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
-    queryFn: listUsers,
+    queryFn: () => listUsers(),
     enabled: isAdmin(),
   });
   const { data: allRequests = [] } = useQuery({
