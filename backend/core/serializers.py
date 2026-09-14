@@ -1,4 +1,5 @@
 from decimal import Decimal
+import json
 
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -444,6 +445,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     )
     dates = LeaveDaySerializer(source='day_payload', many=True, required=False, allow_empty=False)
     emergency = serializers.BooleanField(required=False, default=False)
+    attachment = serializers.FileField(required=False, allow_null=True)
+    attachment_url = serializers.SerializerMethodField()
+    attachment_name = serializers.SerializerMethodField()
     employee_balance = serializers.SerializerMethodField()
 
     class Meta:
@@ -462,6 +466,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'status',
             'reason',
             'emergency',
+            'attachment',
+            'attachment_url',
+            'attachment_name',
             'employee_balance',
             'created_at',
             'reviewed_by',
@@ -480,15 +487,49 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'reviewed_at',
             'review_comment',
             'employee_balance',
+            'attachment_url',
+            'attachment_name',
         )
         extra_kwargs = {
             'reason': {'required': False, 'allow_blank': True},
+            'attachment': {'write_only': True},
         }
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'dict'):
+            payload = data.dict()
+            attachment = data.get('attachment')
+            if attachment not in (None, ''):
+                payload['attachment'] = attachment
+        elif hasattr(data, 'copy'):
+            payload = data.copy()
+        else:
+            payload = dict(data)
+
+        dates = payload.get('dates')
+        if isinstance(dates, str):
+            try:
+                payload['dates'] = json.loads(dates)
+            except json.JSONDecodeError as exc:
+                raise serializers.ValidationError(
+                    {'dates': 'Format de dates invalide.'}
+                ) from exc
+
+        emergency = payload.get('emergency')
+        if isinstance(emergency, str):
+            payload['emergency'] = emergency.strip().lower() in {
+                '1',
+                'true',
+                'yes',
+                'on',
+            }
+
+        return super().to_internal_value(payload)
 
     def validate_type(self, value):
         if value not in services.REQUESTABLE_LEAVE_TYPES:
             raise serializers.ValidationError(
-                'Seuls les congés annuels et sans solde sont autorisés.'
+                'Seuls les congés annuels, maladie et sans solde sont autorisés.'
             )
         return value
 
@@ -503,6 +544,21 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         if not obj.reviewed_by:
             return None
         return display_name(obj.reviewed_by)
+
+    def get_attachment_url(self, obj):
+        if not obj.attachment:
+            return None
+        request = self.context.get('request')
+        url = obj.attachment.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_attachment_name(self, obj):
+        if not obj.attachment:
+            return None
+        name = obj.attachment.name or ''
+        return name.rsplit('/', 1)[-1] if name else None
 
     def get_employee_balance(self, obj):
         balances = list(obj.employee.leave_balances.all())
@@ -541,6 +597,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         validated_data.pop('days', None)
         dates = validated_data.pop('day_payload', None)
         emergency = validated_data.pop('emergency', False)
+        attachment = validated_data.pop('attachment', None)
         if not dates:
             raise serializers.ValidationError(
                 {'dates': 'Sélectionnez au moins une journée.'}
@@ -554,12 +611,14 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             allow_past=on_behalf,
             auto_approve=on_behalf,
             reviewer=request.user if on_behalf else None,
+            attachment=attachment,
         )
 
     def update(self, instance, validated_data):
         validated_data.pop('days', None)
         dates = validated_data.pop('day_payload', None)
         emergency = validated_data.pop('emergency', instance.emergency)
+        attachment = validated_data.pop('attachment', None)
         if dates is None:
             dates = instance.day_payload
         return services.update_leave_request(
@@ -568,6 +627,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             dates=dates,
             reason=validated_data.get('reason', instance.reason or ''),
             emergency=emergency,
+            attachment=attachment,
         )
 
 

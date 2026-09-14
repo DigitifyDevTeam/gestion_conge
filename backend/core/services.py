@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
@@ -24,7 +26,7 @@ from .models import (
     UserRole,
 )
 
-REQUESTABLE_LEAVE_TYPES = {LeaveType.ANNUAL, LeaveType.UNPAID}
+REQUESTABLE_LEAVE_TYPES = {LeaveType.ANNUAL, LeaveType.UNPAID, LeaveType.SICK}
 MIN_LEAVE_DAYS = Decimal('0.5')
 HALF_DAY = Decimal('0.5')
 MIN_LEAVE_NOTICE_DAYS = 5
@@ -298,6 +300,39 @@ def normalize_leave_reason(reason, *, required=False):
     )
 
 
+def validate_leave_attachment(attachment, *, required=True):
+    if attachment in (None, ''):
+        if required:
+            raise ValidationError(
+                {'attachment': 'Une pièce jointe est obligatoire (justificatif).'}
+            )
+        return None
+
+    name = getattr(attachment, 'name', '') or ''
+    extension = Path(name).suffix.lower()
+    allowed = getattr(
+        settings,
+        'LEAVE_ATTACHMENT_ALLOWED_EXTENSIONS',
+        {'.pdf', '.png', '.jpg', '.jpeg', '.webp'},
+    )
+    if extension not in allowed:
+        raise ValidationError(
+            {
+                'attachment': (
+                    'Format non autorisé. Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.'
+                )
+            }
+        )
+
+    max_bytes = getattr(settings, 'LEAVE_ATTACHMENT_MAX_BYTES', 5 * 1024 * 1024)
+    size = getattr(attachment, 'size', None)
+    if size is not None and size > max_bytes:
+        raise ValidationError(
+            {'attachment': 'La pièce jointe ne doit pas dépasser 5 Mo.'}
+        )
+    return attachment
+
+
 def _normalize_period(value):
     period = value or None
     if period == '':
@@ -402,6 +437,7 @@ def create_leave_request(
     allow_past=False,
     auto_approve=False,
     reviewer=None,
+    attachment=None,
 ):
     if not can_have_leave(employee):
         raise ValidationError(
@@ -410,19 +446,18 @@ def create_leave_request(
 
     if leave_type not in REQUESTABLE_LEAVE_TYPES:
         raise ValidationError(
-            {'type': 'Seuls les congés annuels et sans solde sont autorisés.'}
+            {'type': 'Seuls les congés annuels, maladie et sans solde sont autorisés.'}
         )
 
-    # Admin backdated entries skip the employee notice window.
+    # Admin backdated entries and sick leave skip the employee notice window.
     effective_emergency = emergency or allow_past
-    trimmed_reason = normalize_leave_reason(
-        reason,
-        required=effective_emergency,
-    )
+    skip_notice = effective_emergency or leave_type == LeaveType.SICK
+    trimmed_reason = normalize_leave_reason(reason, required=False)
+    validated_attachment = validate_leave_attachment(attachment, required=True)
 
     selected, resolved_days = _validate_leave_dates(
         dates,
-        emergency=effective_emergency,
+        emergency=skip_notice,
         allow_past=allow_past,
     )
     period = _request_level_period(selected)
@@ -446,6 +481,7 @@ def create_leave_request(
             status=RequestStatus.APPROVED,
             reason=trimmed_reason,
             emergency=effective_emergency,
+            attachment=validated_attachment,
             reviewed_by=reviewer,
             reviewed_at=timezone.now(),
             review_comment='Saisie administrative',
@@ -500,6 +536,7 @@ def create_leave_request(
         status=RequestStatus.PENDING,
         reason=trimmed_reason,
         emergency=effective_emergency,
+        attachment=validated_attachment,
     )
     _sync_request_days(request, selected)
     balance.pending += resolved_days
@@ -532,6 +569,7 @@ def update_leave_request(
     dates,
     reason='',
     emergency=False,
+    attachment=None,
 ):
     if request.status != RequestStatus.PENDING:
         raise ValidationError(
@@ -539,11 +577,17 @@ def update_leave_request(
         )
     if leave_type not in REQUESTABLE_LEAVE_TYPES:
         raise ValidationError(
-            {'type': 'Seuls les congés annuels et sans solde sont autorisés.'}
+            {'type': 'Seuls les congés annuels, maladie et sans solde sont autorisés.'}
         )
 
-    trimmed_reason = normalize_leave_reason(reason, required=emergency)
-    selected, resolved_days = _validate_leave_dates(dates, emergency=emergency)
+    trimmed_reason = normalize_leave_reason(reason, required=False)
+    has_existing_attachment = bool(request.attachment)
+    validated_attachment = validate_leave_attachment(
+        attachment,
+        required=not has_existing_attachment,
+    )
+    skip_notice = emergency or leave_type == LeaveType.SICK
+    selected, resolved_days = _validate_leave_dates(dates, emergency=skip_notice)
     period = _request_level_period(selected)
     assert_no_overlap(
         request.employee,
@@ -567,17 +611,19 @@ def update_leave_request(
     request.half_day_period = period
     request.reason = trimmed_reason
     request.emergency = emergency
-    request.save(
-        update_fields=[
-            'type',
-            'start_date',
-            'end_date',
-            'days',
-            'half_day_period',
-            'reason',
-            'emergency',
-        ]
-    )
+    update_fields = [
+        'type',
+        'start_date',
+        'end_date',
+        'days',
+        'half_day_period',
+        'reason',
+        'emergency',
+    ]
+    if validated_attachment is not None:
+        request.attachment = validated_attachment
+        update_fields.append('attachment')
+    request.save(update_fields=update_fields)
     _sync_request_days(request, selected)
 
     balance.pending += resolved_days

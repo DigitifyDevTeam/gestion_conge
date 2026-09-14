@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { format, parseISO, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Palmtree, Clock, Siren, X } from 'lucide-react';
+import { AlertCircle, Palmtree, Clock, Siren, Thermometer, Upload, X, FileText } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -22,16 +21,12 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
-  composeLeaveReason,
   earliestLeaveDate,
   formatLeaveDates,
   formatLeaveDuration,
   holidayDateKeys,
-  isLeaveReasonChoice,
   isWorkingDay,
-  LEAVE_REASON_OPTIONS,
   MIN_LEAVE_NOTICE_DAYS,
-  parseLeaveReason,
   sortLeaveDays,
   sumLeaveDayValues,
   toDateKey,
@@ -41,7 +36,6 @@ import {
   HolidayRequest,
   HolidayType,
   LeaveDay,
-  LeaveReasonChoice,
 } from '@/types/holiday';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -66,10 +60,24 @@ interface NewRequestDialogProps {
 
 type DayDuration = 'full' | 'half';
 
+const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+const ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp';
+const ATTACHMENT_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp']);
+
 const holidayTypes: { type: HolidayType; label: string; icon: typeof Palmtree; description: string }[] = [
-  { type: 'annual', label: 'Congés annuels', icon: Palmtree, description: 'Vacances ou congés planifiés' },
-  { type: 'unpaid', label: 'Congés sans solde', icon: Clock, description: 'Congés prolongés sans rémunération' },
+  { type: 'annual', label: 'Annuels', icon: Palmtree, description: 'Vacances ou absences planifiées' },
+  { type: 'sick', label: 'Maladie', icon: Thermometer, description: 'Arrêt maladie avec justificatif' },
+  { type: 'unpaid', label: 'Sans solde', icon: Clock, description: 'Absence prolongée sans rémunération' },
 ];
+
+function isAllowedAttachment(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const dot = name.lastIndexOf('.');
+  if (dot < 0) {
+    return false;
+  }
+  return ATTACHMENT_EXTENSIONS.has(name.slice(dot));
+}
 
 const durationOptions: { value: DayDuration; label: string }[] = [
   { value: 'full', label: 'Journée' },
@@ -166,12 +174,13 @@ export function NewRequestDialog({
   const isEditing = Boolean(requestToEdit);
   const [selectedType, setSelectedType] = useState<HolidayType>('annual');
   const [selectedDays, setSelectedDays] = useState<LeaveDay[]>([]);
-  const [reasonChoice, setReasonChoice] = useState<LeaveReasonChoice | ''>('');
-  const [otherReason, setOtherReason] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [existingAttachmentName, setExistingAttachmentName] = useState<string | null>(null);
   const [apiConflictKeys, setApiConflictKeys] = useState<string[]>([]);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfDay(new Date()));
   const [emergencyMode, setEmergencyMode] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const employeeOptions = useMemo(
     () =>
@@ -212,11 +221,14 @@ export function NewRequestDialog({
   const resetForm = () => {
     setSelectedType('annual');
     setSelectedDays([]);
-    setReasonChoice('');
-    setOtherReason('');
+    setAttachment(null);
+    setExistingAttachmentName(null);
     setApiConflictKeys([]);
     setEmergencyMode(false);
     setSelectedEmployeeId('');
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
   };
 
   useEffect(() => {
@@ -228,15 +240,14 @@ export function NewRequestDialog({
       setVisibleMonth(startOfDay(new Date()));
       return;
     }
-    const parsed = parseLeaveReason(requestToEdit.reason || '');
     const editDays = requestToEdit.dates.map((day) => ({
       date: startOfDay(new Date(day.date)),
       halfDayPeriod: day.halfDayPeriod || null,
     }));
     setSelectedType(requestToEdit.type);
     setSelectedDays(editDays);
-    setReasonChoice(parsed.choice);
-    setOtherReason(parsed.otherDetail);
+    setAttachment(null);
+    setExistingAttachmentName(requestToEdit.attachmentName || null);
     setApiConflictKeys([]);
     setSelectedEmployeeId(requestToEdit.employeeId || '');
     const noticeDate = earliestLeaveDate(new Date(), false);
@@ -245,6 +256,9 @@ export function NewRequestDialog({
         editDays.some((day) => startOfDay(day.date) < noticeDate),
     );
     setVisibleMonth(editDays[0]?.date ?? startOfDay(new Date()));
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
   }, [open, requestToEdit]);
 
   const invalidate = () => {
@@ -330,9 +344,10 @@ export function NewRequestDialog({
 
   const today = startOfDay(new Date());
   const allowPastDays = adminMode && !isEditing;
+  const bypassNotice = emergencyMode || selectedType === 'sick';
   const minSelectableDate = allowPastDays
     ? undefined
-    : earliestLeaveDate(today, emergencyMode);
+    : earliestLeaveDate(today, bypassNotice);
   const sortedDays = useMemo(() => sortLeaveDays(selectedDays), [selectedDays]);
   const resolvedDays = sumLeaveDayValues(sortedDays);
   const selectedDates = sortedDays.map((day) => day.date);
@@ -441,11 +456,16 @@ export function NewRequestDialog({
     if (invalidDay) {
       const tooSoon =
         Boolean(minSelectableDate) && startOfDay(invalidDay.date) < minSelectableDate!;
+      let invalidDescription = `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est un week-end ou un jour férié.`;
+      if (tooSoon) {
+        invalidDescription =
+          selectedType === 'sick'
+            ? 'Les congés maladie peuvent commencer dès aujourd’hui.'
+            : `Les congés doivent commencer au plus tôt le ${format(minSelectableDate!, 'd MMMM yyyy', { locale: fr })}. Activez le mode urgence pour aujourd’hui ou demain.`;
+      }
       toast({
         title: tooSoon ? `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours` : 'Jour invalide',
-        description: tooSoon
-          ? `Les congés doivent commencer au plus tôt le ${format(minSelectableDate!, 'd MMMM yyyy', { locale: fr })}. Activez le mode urgence pour aujourd’hui ou demain.`
-          : `Le ${format(invalidDay.date, 'd MMM yyyy', { locale: fr })} est un week-end ou un jour férié.`,
+        description: invalidDescription,
         variant: 'destructive',
       });
       return;
@@ -462,30 +482,42 @@ export function NewRequestDialog({
     }
 
     const isEmergencyRequest = allowPastDays || emergencyMode;
+    const hasAttachment = Boolean(attachment) || Boolean(existingAttachmentName);
 
-    if (isEmergencyRequest && !reasonChoice) {
+    if (!hasAttachment) {
       toast({
-        title: 'Raison requise',
-        description: 'En mode urgence, veuillez sélectionner la raison de votre demande.',
+        title: 'Pièce jointe requise',
+        description: 'Ajoutez un justificatif (PDF ou image, max 5 Mo).',
         variant: 'destructive',
       });
       return;
     }
 
-    if (reasonChoice === 'other' && !otherReason.trim()) {
-      toast({
-        title: 'Raison requise',
-        description: 'Veuillez préciser la raison pour « Autre ».',
-        variant: 'destructive',
-      });
-      return;
+    if (attachment) {
+      if (!isAllowedAttachment(attachment)) {
+        toast({
+          title: 'Format non autorisé',
+          description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (attachment.size > ATTACHMENT_MAX_BYTES) {
+        toast({
+          title: 'Fichier trop volumineux',
+          description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     const payload: LeaveRequestPayload = {
       type: selectedType,
       dates: sortedDays,
-      reason: reasonChoice ? composeLeaveReason(reasonChoice, otherReason) : '',
+      reason: '',
       emergency: isEmergencyRequest,
+      attachment: attachment || undefined,
       ...(adminMode && selectedEmployeeId ? { employeeId: selectedEmployeeId } : {}),
     };
     if (isEditing) {
@@ -504,15 +536,20 @@ export function NewRequestDialog({
   let dialogDescription: string;
   if (adminMode && !isEditing) {
     dialogDescription =
-      'Saisissez un congé pour un employé, y compris des jours passés (congé urgent non déclaré). La demande sera approuvée immédiatement. La raison est obligatoire.';
+      'Saisissez un congé pour un employé, y compris des jours passés. La demande sera approuvée immédiatement. Une pièce jointe est obligatoire.';
+  } else if (selectedType === 'sick') {
+    dialogDescription =
+      'Congé maladie : vous pouvez sélectionner aujourd’hui et les jours suivants. Une pièce jointe est obligatoire.';
   } else if (emergencyMode) {
     dialogDescription =
-      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants. La raison est obligatoire.';
+      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants. Une pièce jointe est obligatoire.';
   } else if (minSelectableDate) {
-    dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`;
+    dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}. Une pièce jointe est obligatoire.`;
   } else {
-    dialogDescription = 'Sélectionnez les jours de congé.';
+    dialogDescription = 'Sélectionnez les jours et joignez un justificatif.';
   }
+
+  const attachmentLabel = attachment?.name || existingAttachmentName;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -570,7 +607,7 @@ export function NewRequestDialog({
             )}
           >
             <Label className="text-sm font-medium">Type de congé</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {holidayTypes.map(({ type, label, icon: Icon, description }) => (
                 <button
                   key={type}
@@ -578,7 +615,7 @@ export function NewRequestDialog({
                   title={description}
                   onClick={() => setSelectedType(type)}
                   className={cn(
-                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all',
+                    'flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all',
                     selectedType === type
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:border-primary/50 hover:bg-secondary/50',
@@ -687,62 +724,86 @@ export function NewRequestDialog({
             )}
           >
             <Label className="text-sm font-medium">
-              Raison
-              {(allowPastDays || emergencyMode) && (
-                <span className="text-destructive"> *</span>
-              )}
-              {!allowPastDays && !emergencyMode && (
-                <span className="text-muted-foreground font-normal"> (facultatif)</span>
-              )}
+              Pièce jointe <span className="text-destructive">*</span>
             </Label>
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <Select
-                  value={reasonChoice || undefined}
-                  onValueChange={(value) => {
-                    if (!isLeaveReasonChoice(value)) {
-                      return;
-                    }
-                    setReasonChoice(value);
-                    if (value !== 'other') {
-                      setOtherReason('');
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                if (!file) {
+                  setAttachment(null);
+                  return;
+                }
+                if (!isAllowedAttachment(file)) {
+                  toast({
+                    title: 'Format non autorisé',
+                    description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
+                    variant: 'destructive',
+                  });
+                  event.target.value = '';
+                  return;
+                }
+                if (file.size > ATTACHMENT_MAX_BYTES) {
+                  toast({
+                    title: 'Fichier trop volumineux',
+                    description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
+                    variant: 'destructive',
+                  });
+                  event.target.value = '';
+                  return;
+                }
+                setAttachment(file);
+                setExistingAttachmentName(null);
+              }}
+            />
+            {attachmentLabel ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                <FileText className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  {attachmentLabel}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 shrink-0 px-2"
+                  onClick={() => attachmentInputRef.current?.click()}
+                >
+                  Remplacer
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => {
+                    setAttachment(null);
+                    setExistingAttachmentName(null);
+                    if (attachmentInputRef.current) {
+                      attachmentInputRef.current.value = '';
                     }
                   }}
+                  aria-label="Retirer la pièce jointe"
                 >
-                  <SelectTrigger
-                    className="h-9"
-                    aria-required={allowPastDays || emergencyMode}
-                  >
-                    <SelectValue
-                      placeholder={
-                        allowPastDays || emergencyMode
-                          ? 'Choisir une raison'
-                          : 'Choisir une raison (facultatif)'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LEAVE_REASON_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-              {reasonChoice === 'other' && (
-                <Input
-                  id="leave-reason-other"
-                  placeholder="Précisez la raison..."
-                  value={otherReason}
-                  onChange={(e) => setOtherReason(e.target.value)}
-                  className="h-9 min-w-0 flex-1"
-                  required
-                  aria-required="true"
-                  aria-label="Précisez la raison"
-                />
-              )}
-            </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => attachmentInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-secondary/40 hover:text-foreground"
+              >
+                <Upload className="h-4 w-4" />
+                Ajouter un justificatif (PDF ou image)
+              </button>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Obligatoire · PDF, PNG, JPG, WEBP · max 5 Mo
+            </p>
           </div>
 
           <div

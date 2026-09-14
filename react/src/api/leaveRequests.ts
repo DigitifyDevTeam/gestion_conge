@@ -21,6 +21,8 @@ interface ApiLeaveRequest {
   status: RequestStatus;
   reason?: string;
   emergency?: boolean;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   employee_balance?: {
     total: number | string;
     used: number | string;
@@ -88,6 +90,8 @@ export function mapLeaveRequest(r: ApiLeaveRequest): HolidayRequest {
     status: r.status,
     reason: r.reason || undefined,
     emergency: Boolean(r.emergency),
+    attachmentUrl: r.attachment_url || undefined,
+    attachmentName: r.attachment_name || undefined,
     employeeBalance: r.employee_balance
       ? {
           type: r.type,
@@ -115,21 +119,32 @@ export interface LeaveRequestPayload {
   dates: LeaveDay[];
   reason?: string;
   emergency?: boolean;
+  attachment?: File | null;
   /** Admin-only: create leave on behalf of this employee */
   employeeId?: string;
 }
 
-function serializePayload(payload: LeaveRequestPayload) {
-  return JSON.stringify({
-    type: payload.type,
-    dates: payload.dates.map((day) => ({
-      date: toDateString(day.date),
-      half_day_period: day.halfDayPeriod || null,
-    })),
-    reason: (payload.reason || '').trim(),
-    emergency: Boolean(payload.emergency),
-    ...(payload.employeeId ? { employee_id: Number(payload.employeeId) } : {}),
-  });
+function buildLeaveRequestFormData(payload: LeaveRequestPayload): FormData {
+  const formData = new FormData();
+  formData.append('type', payload.type);
+  formData.append(
+    'dates',
+    JSON.stringify(
+      payload.dates.map((day) => ({
+        date: toDateString(day.date),
+        half_day_period: day.halfDayPeriod || null,
+      })),
+    ),
+  );
+  formData.append('reason', (payload.reason || '').trim());
+  formData.append('emergency', payload.emergency ? 'true' : 'false');
+  if (payload.employeeId) {
+    formData.append('employee_id', payload.employeeId);
+  }
+  if (payload.attachment) {
+    formData.append('attachment', payload.attachment);
+  }
+  return formData;
 }
 
 export async function createLeaveRequest(
@@ -137,7 +152,7 @@ export async function createLeaveRequest(
 ): Promise<HolidayRequest> {
   const data = await apiFetch<ApiLeaveRequest>('/leave-requests/', {
     method: 'POST',
-    body: serializePayload(payload),
+    body: buildLeaveRequestFormData(payload),
   });
   return mapLeaveRequest(data);
 }
@@ -148,7 +163,7 @@ export async function updateLeaveRequest(
 ): Promise<HolidayRequest> {
   const data = await apiFetch<ApiLeaveRequest>(`/leave-requests/${id}/`, {
     method: 'PATCH',
-    body: serializePayload(payload),
+    body: buildLeaveRequestFormData(payload),
   });
   return mapLeaveRequest(data);
 }
