@@ -29,7 +29,7 @@ admin.site.register(User, UserAdmin)
 
 @admin.register(EmployeeProfile)
 class EmployeeProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'role', 'department', 'position', 'email_verified', 'google_sub')
+    list_display = ('user', 'role', 'department', 'position', 'calendar_color', 'email_verified', 'google_sub')
     list_filter = ('role', 'department', 'email_verified')
     search_fields = ('user__username', 'user__email', 'user__first_name', 'user__last_name', 'google_sub')
 

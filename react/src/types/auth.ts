@@ -8,6 +8,8 @@ export interface User {
   avatar?: string;
   department?: string;
   position?: string;
+  /** Calendar display color (#RRGGBB). Empty/undefined = auto hash. */
+  calendarColor?: string;
   isActive?: boolean;
 }
 

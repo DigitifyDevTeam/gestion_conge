@@ -64,6 +64,12 @@ class EmployeeProfile(models.Model):
     department = models.CharField(max_length=120, blank=True, default='')
     position = models.CharField(max_length=120, blank=True, default='')
     avatar = models.URLField(max_length=500, blank=True, default='')
+    calendar_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default='',
+        help_text='Couleur calendrier (hex), ex. #3B82F6. Vide = couleur auto.',
+    )
     email_verified = models.BooleanField(default=False)
     google_sub = models.CharField(
         max_length=255,

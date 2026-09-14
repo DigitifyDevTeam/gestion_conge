@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Clock, Calendar, TrendingUp, ArrowRight, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { formatLeaveDuration, formatLeaveDurationCompact } from '@/lib/leave';
+import { buildEmployeeColorMap } from '@/lib/employeeColor';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -46,6 +47,8 @@ export default function AdminDashboard() {
     queryFn: listTeam,
     enabled: isAdmin(),
   });
+
+  const employeeColorMap = useMemo(() => buildEmployeeColorMap(users), [users]);
 
   if (!isAdmin()) {
     return null;
@@ -133,6 +136,7 @@ export default function AdminDashboard() {
           <YearCalendar
             requests={allRequests}
             publicHolidays={publicHolidays}
+            employeeColorMap={employeeColorMap}
           />
         </div>
 

@@ -21,12 +21,14 @@ import {
   getEmployeesOnLeaveInYear,
   getPeopleOnLeaveForDay,
   halfDayDiagonalStyle,
+  type EmployeeColorMap,
 } from '@/lib/employeeColor';
 import { cn } from '@/lib/utils';
 
 interface YearCalendarProps {
   requests: HolidayRequest[];
   publicHolidays: PublicHoliday[];
+  employeeColorMap?: EmployeeColorMap;
 }
 
 const WEEK_DAYS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
@@ -36,10 +38,12 @@ function MonthBlock({
   monthDate,
   requests,
   publicHolidays,
+  employeeColorMap,
 }: {
   monthDate: Date;
   requests: HolidayRequest[];
   publicHolidays: PublicHoliday[];
+  employeeColorMap?: EmployeeColorMap;
 }) {
   const monthStart = startOfMonth(monthDate);
   const monthEnd = endOfMonth(monthDate);
@@ -71,7 +75,9 @@ function MonthBlock({
       >
         {days.map((day) => {
           const inMonth = isSameMonth(day, monthDate);
-          const people = inMonth ? getPeopleOnLeaveForDay(requests, day) : [];
+          const people = inMonth
+            ? getPeopleOnLeaveForDay(requests, day, employeeColorMap)
+            : [];
           const hasLeave = people.length > 0;
           const single = people.length === 1 ? people[0] : null;
           const isHalfDayOnly = Boolean(single?.halfDay);
@@ -139,7 +145,11 @@ function MonthBlock({
   );
 }
 
-export function YearCalendar({ requests, publicHolidays }: YearCalendarProps) {
+export function YearCalendar({
+  requests,
+  publicHolidays,
+  employeeColorMap,
+}: YearCalendarProps) {
   const [currentYear, setCurrentYear] = useState(() => getYear(new Date()));
 
   const months = useMemo(
@@ -151,8 +161,8 @@ export function YearCalendar({ requests, publicHolidays }: YearCalendarProps) {
   );
 
   const employeesOnLeave = useMemo(
-    () => getEmployeesOnLeaveInYear(requests, currentYear),
-    [requests, currentYear],
+    () => getEmployeesOnLeaveInYear(requests, currentYear, employeeColorMap),
+    [requests, currentYear, employeeColorMap],
   );
 
   return (
@@ -200,6 +210,7 @@ export function YearCalendar({ requests, publicHolidays }: YearCalendarProps) {
             monthDate={monthDate}
             requests={requests}
             publicHolidays={publicHolidays}
+            employeeColorMap={employeeColorMap}
           />
         ))}
       </div>

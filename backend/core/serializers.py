@@ -1,5 +1,6 @@
 from decimal import Decimal
 import json
+import re
 
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -60,6 +61,7 @@ class UserSerializer(serializers.ModelSerializer):
     department = serializers.SerializerMethodField()
     position = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
+    calendar_color = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False, allow_blank=False)
 
     class Meta:
@@ -75,6 +77,7 @@ class UserSerializer(serializers.ModelSerializer):
             'department',
             'position',
             'avatar',
+            'calendar_color',
             'password',
             'is_active',
         )
@@ -102,6 +105,10 @@ class UserSerializer(serializers.ModelSerializer):
         profile = self._profile(obj)
         return profile.avatar if profile else ''
 
+    def get_calendar_color(self, obj):
+        profile = self._profile(obj)
+        return profile.calendar_color if profile else ''
+
     def validate_email(self, value):
         qs = User.objects.filter(email__iexact=value)
         if self.instance:
@@ -109,6 +116,16 @@ class UserSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError('Un utilisateur avec cet email existe déjà.')
         return value
+
+    def _normalize_calendar_color(self, value):
+        color = (value or '').strip()
+        if not color:
+            return ''
+        if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color):
+            raise serializers.ValidationError(
+                {'calendar_color': 'Couleur invalide. Utilisez le format #RRGGBB.'}
+            )
+        return color.upper()
 
     def _split_name(self, name):
         parts = (name or '').strip().split(None, 1)
@@ -147,6 +164,7 @@ class UserSerializer(serializers.ModelSerializer):
             department=request_data.get('department', ''),
             position=request_data.get('position', ''),
             avatar=request_data.get('avatar', ''),
+            calendar_color=self._normalize_calendar_color(request_data.get('calendar_color', '')),
             email_verified=False,
         )
         if role == UserRole.EMPLOYEE:
@@ -189,6 +207,10 @@ class UserSerializer(serializers.ModelSerializer):
         for field in ('role', 'department', 'position', 'avatar'):
             if field in request_data:
                 setattr(profile, field, request_data.get(field) or '')
+        if 'calendar_color' in request_data:
+            profile.calendar_color = self._normalize_calendar_color(
+                request_data.get('calendar_color', '')
+            )
         profile.save()
 
         new_role = profile.role

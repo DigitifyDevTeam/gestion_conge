@@ -45,6 +45,8 @@ import { toast } from '@/hooks/use-toast';
 import { User, UserRole } from '@/types/auth';
 import { createUser, deleteUser, listUsers, resendUserInvitation, updateUser } from '@/api/users';
 import { ApiError } from '@/api/client';
+import { EMPLOYEE_COLOR_HEX_PRESETS, resolveEmployeeColor } from '@/lib/employeeColor';
+import { cn } from '@/lib/utils';
 
 const userSchema = z.object({
   name: z.string().min(1, 'Le nom est requis'),
@@ -52,11 +54,26 @@ const userSchema = z.object({
   role: z.enum(['employee', 'admin']),
   department: z.string().min(1, 'Le département est requis'),
   position: z.string().min(1, 'Le poste est requis'),
+  calendarColor: z
+    .string()
+    .regex(/^$|^#[0-9A-Fa-f]{6}$/, 'Couleur invalide (#RRGGBB)')
+    .optional(),
 });
 
 type UserFormData = z.infer<typeof userSchema>;
 
-const USER_FORM_FIELDS = ['name', 'email', 'role', 'department', 'position'] as const;
+const USER_FORM_FIELDS = ['name', 'email', 'role', 'department', 'position', 'calendarColor'] as const;
+
+function toApiPayload(data: UserFormData) {
+  return {
+    name: data.name,
+    email: data.email,
+    role: data.role,
+    department: data.department,
+    position: data.position,
+    calendar_color: data.calendarColor || '',
+  };
+}
 
 function applyApiFieldErrors(err: unknown, setError: UseFormSetError<UserFormData>): boolean {
   if (!(err instanceof ApiError) || !err.data || typeof err.data !== 'object') {
@@ -67,15 +84,84 @@ function applyApiFieldErrors(err: unknown, setError: UseFormSetError<UserFormDat
   let applied = false;
 
   for (const key of USER_FORM_FIELDS) {
-    const value = data[key];
+    const apiKey = key === 'calendarColor' ? 'calendar_color' : key;
+    const value = data[key] ?? data[apiKey];
     if (value === undefined) continue;
 
-    const message = Array.isArray(value) ? String(value[0]) : String(value);
+    let message = 'Valeur invalide.';
+    if (Array.isArray(value)) {
+      message = String(value[0]);
+    } else if (typeof value === 'string') {
+      message = value;
+    }
     setError(key, { message });
     applied = true;
   }
 
   return applied;
+}
+
+function CalendarColorField({
+  value,
+  onChange,
+  previewUserId,
+  error,
+}: {
+  value: string;
+  onChange: (hex: string) => void;
+  previewUserId?: string;
+  error?: string;
+}) {
+  const previewId = previewUserId || 'preview';
+  const preview = resolveEmployeeColor(
+    previewId,
+    new Map([[previewId, value || undefined]]),
+  );
+  const selected = value.toUpperCase();
+
+  return (
+    <div className="space-y-2">
+      <Label>Couleur calendrier</Label>
+      <p className="text-xs text-muted-foreground">
+        Couleur utilisée sur le calendrier d&apos;équipe. Laissez vide pour une couleur automatique.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {EMPLOYEE_COLOR_HEX_PRESETS.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            title={hex}
+            className={cn(
+              'h-7 w-7 rounded-full border-2 transition-transform hover:scale-105',
+              selected === hex ? 'border-foreground scale-105' : 'border-transparent',
+            )}
+            style={{ backgroundColor: hex }}
+            onClick={() => onChange(hex)}
+          />
+        ))}
+        <label
+          className="relative h-7 w-7 cursor-pointer overflow-hidden rounded-full border border-border"
+          aria-label="Choisir une couleur personnalisée"
+        >
+          <span
+            className="absolute inset-0"
+            style={{ backgroundColor: value || preview.bg }}
+          />
+          <input
+            type="color"
+            aria-label="Couleur personnalisée"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            value={value || '#4F6EF7'}
+            onChange={(e) => onChange(e.target.value.toUpperCase())}
+          />
+        </label>
+        <Button type="button" variant="ghost" size="sm" onClick={() => onChange('')}>
+          Auto
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
 }
 
 function roleLabel(role: UserRole): string {
@@ -127,10 +213,12 @@ export default function UserManagementPage() {
     resolver: zodResolver(userSchema),
     defaultValues: {
       role: 'employee',
+      calendarColor: '',
     },
   });
 
   const role = watch('role');
+  const calendarColor = watch('calendarColor') || '';
 
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -143,7 +231,7 @@ export default function UserManagementPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: createUser,
+    mutationFn: (data: UserFormData) => createUser(toApiPayload(data)),
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['leave-balances'] });
@@ -169,7 +257,8 @@ export default function UserManagementPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UserFormData }) => updateUser(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UserFormData }) =>
+      updateUser(id, toApiPayload(data)),
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast({ title: 'Utilisateur mis à jour', description: `${user.name} a été mis à jour avec succès.` });
@@ -234,6 +323,7 @@ export default function UserManagementPage() {
     setValue('role', user.role);
     setValue('department', user.department || '');
     setValue('position', user.position || '');
+    setValue('calendarColor', user.calendarColor || '');
   };
 
   const handleUpdate = (data: UserFormData) => {
@@ -297,6 +387,7 @@ export default function UserManagementPage() {
                   <TableHead>Département</TableHead>
                   <TableHead>Poste</TableHead>
                   <TableHead>Rôle</TableHead>
+                  <TableHead>Couleur</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -322,6 +413,18 @@ export default function UserManagementPage() {
                         <Badge variant={roleBadgeVariant(user.role)}>
                           {roleLabel(user.role)}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className="inline-block h-4 w-4 rounded-full border border-border"
+                          style={{
+                            backgroundColor: resolveEmployeeColor(
+                              user.id,
+                              new Map([[user.id, user.calendarColor]]),
+                            ).bg,
+                          }}
+                          title={user.calendarColor || 'Automatique'}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -356,7 +459,7 @@ export default function UserManagementPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Aucun utilisateur trouvé
                     </TableCell>
                   </TableRow>
@@ -420,6 +523,11 @@ export default function UserManagementPage() {
                 <p className="text-sm text-destructive">{errors.position.message}</p>
               )}
             </div>
+            <CalendarColorField
+              value={calendarColor}
+              onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
+              error={errors.calendarColor?.message}
+            />
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
@@ -484,6 +592,12 @@ export default function UserManagementPage() {
                 <p className="text-sm text-destructive">{errors.position.message}</p>
               )}
             </div>
+            <CalendarColorField
+              value={calendarColor}
+              onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
+              previewUserId={editingUser?.id}
+              error={errors.calendarColor?.message}
+            />
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"

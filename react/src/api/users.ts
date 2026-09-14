@@ -10,6 +10,7 @@ interface ApiUser {
   department?: string;
   position?: string;
   avatar?: string;
+  calendar_color?: string;
   is_active?: boolean;
   invitation_sent?: boolean;
 }
@@ -38,6 +39,7 @@ export async function createUser(payload: {
   department?: string;
   position?: string;
   avatar?: string;
+  calendar_color?: string;
   password?: string;
 }): Promise<CreateUserResult> {
   const data = await apiFetch<ApiUser>('/users/', {
@@ -62,6 +64,7 @@ export async function updateUser(
     department: string;
     position: string;
     avatar: string;
+    calendar_color: string;
     password: string;
   }>,
 ): Promise<User> {

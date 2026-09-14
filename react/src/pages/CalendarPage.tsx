@@ -21,8 +21,10 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { listLeaveRequests } from '@/api/leaveRequests';
 import { listPublicHolidays } from '@/api/publicHolidays';
+import { listUsers } from '@/api/users';
 import {
-  getEmployeeColor,
+  buildEmployeeColorMap,
+  resolveEmployeeColor,
   getEmployeesOnLeaveInYear,
   halfDayDiagonalStyle,
 } from '@/lib/employeeColor';
@@ -40,6 +42,16 @@ export default function CalendarPage() {
     queryFn: listPublicHolidays,
   });
   const teamView = isAdmin();
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => listUsers(),
+    enabled: teamView,
+  });
+
+  const employeeColorMap = useMemo(
+    () => (teamView ? buildEmployeeColorMap(users) : undefined),
+    [teamView, users],
+  );
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -52,9 +64,9 @@ export default function CalendarPage() {
   const employeesOnLeave = useMemo(
     () =>
       teamView
-        ? getEmployeesOnLeaveInYear(recentRequests, getYear(currentMonth))
+        ? getEmployeesOnLeaveInYear(recentRequests, getYear(currentMonth), employeeColorMap)
         : [],
-    [teamView, recentRequests, currentMonth],
+    [teamView, recentRequests, currentMonth, employeeColorMap],
   );
 
   const getEventsForDay = (day: Date) => {
@@ -163,7 +175,7 @@ export default function CalendarPage() {
                     );
                     const isHalfDay = Boolean(dayEntry?.halfDayPeriod);
                     const color = teamView
-                      ? getEmployeeColor(holiday.employeeId)
+                      ? resolveEmployeeColor(holiday.employeeId, employeeColorMap)
                       : null;
                     const label = teamView
                       ? holiday.employeeName
