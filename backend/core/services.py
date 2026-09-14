@@ -267,8 +267,20 @@ def count_working_days(start_date, end_date) -> int:
     return total
 
 
-def normalize_leave_reason(reason):
+def normalize_leave_reason(reason, *, required=False):
     trimmed = (reason or '').strip()
+    if not trimmed:
+        if required:
+            raise ValidationError(
+                {
+                    'reason': (
+                        'La raison est obligatoire en mode urgence. '
+                        'Choisissez Maladie, Vacances, Raisons familiales, '
+                        'Voyage, Événement personnel, ou Autre.'
+                    )
+                }
+            )
+        return ''
     if trimmed in PRESET_LEAVE_REASONS:
         return trimmed
     if trimmed.startswith(OTHER_LEAVE_REASON_PREFIX):
@@ -401,10 +413,13 @@ def create_leave_request(
             {'type': 'Seuls les congés annuels et sans solde sont autorisés.'}
         )
 
-    trimmed_reason = normalize_leave_reason(reason)
-
     # Admin backdated entries skip the employee notice window.
     effective_emergency = emergency or allow_past
+    trimmed_reason = normalize_leave_reason(
+        reason,
+        required=effective_emergency,
+    )
+
     selected, resolved_days = _validate_leave_dates(
         dates,
         emergency=effective_emergency,
@@ -527,7 +542,7 @@ def update_leave_request(
             {'type': 'Seuls les congés annuels et sans solde sont autorisés.'}
         )
 
-    trimmed_reason = normalize_leave_reason(reason)
+    trimmed_reason = normalize_leave_reason(reason, required=emergency)
     selected, resolved_days = _validate_leave_dates(dates, emergency=emergency)
     period = _request_level_period(selected)
     assert_no_overlap(

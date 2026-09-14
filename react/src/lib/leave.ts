@@ -117,6 +117,24 @@ export function leaveDayValue(day: LeaveDay): number {
   return day.halfDayPeriod ? 0.5 : 1;
 }
 
+/** True when every approved leave entry on that calendar day is a half-day. */
+export function isHalfDayOnlyOnDate(
+  requests: Array<{ status: string; dates: LeaveDay[] }>,
+  day: Date,
+): boolean {
+  const entries = requests
+    .filter((request) => request.status === 'approved')
+    .flatMap((request) =>
+      request.dates.filter((entry) => isSameDay(new Date(entry.date), day)),
+    );
+
+  if (entries.length === 0) {
+    return false;
+  }
+
+  return entries.every((entry) => Boolean(entry.halfDayPeriod));
+}
+
 export function sumLeaveDayValues(days: LeaveDay[]): number {
   return days.reduce((total, day) => total + leaveDayValue(day), 0);
 }

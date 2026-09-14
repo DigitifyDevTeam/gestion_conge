@@ -52,10 +52,10 @@ export function RecentActivity({ requests }: RecentActivityProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium text-sm text-foreground capitalize">
-                    {request.type === 'annual' ? 'Congés annuels' : 
-                     request.type === 'sick' ? 'Congés maladie' : 
-                     request.type === 'personal' ? 'Jours personnels' : 
-                     'Congés sans solde'}
+                    {request.type === 'annual' ? 'Annuels' : 
+                     request.type === 'sick' ? 'Maladie' : 
+                     request.type === 'personal' ? 'Personnel' : 
+                     'Sans solde'}
                   </span>
                   <Badge variant={request.status} className="text-xs">
                     {request.status === 'pending' ? 'En attente' : 

@@ -461,10 +461,12 @@ export function NewRequestDialog({
       return;
     }
 
-    if (!reasonChoice) {
+    const isEmergencyRequest = allowPastDays || emergencyMode;
+
+    if (isEmergencyRequest && !reasonChoice) {
       toast({
         title: 'Raison requise',
-        description: 'Veuillez sélectionner la raison de votre demande de congé.',
+        description: 'En mode urgence, veuillez sélectionner la raison de votre demande.',
         variant: 'destructive',
       });
       return;
@@ -482,8 +484,8 @@ export function NewRequestDialog({
     const payload: LeaveRequestPayload = {
       type: selectedType,
       dates: sortedDays,
-      reason: composeLeaveReason(reasonChoice, otherReason),
-      emergency: allowPastDays || emergencyMode,
+      reason: reasonChoice ? composeLeaveReason(reasonChoice, otherReason) : '',
+      emergency: isEmergencyRequest,
       ...(adminMode && selectedEmployeeId ? { employeeId: selectedEmployeeId } : {}),
     };
     if (isEditing) {
@@ -502,10 +504,10 @@ export function NewRequestDialog({
   let dialogDescription: string;
   if (adminMode && !isEditing) {
     dialogDescription =
-      'Saisissez un congé pour un employé, y compris des jours passés (congé urgent non déclaré). La demande sera approuvée immédiatement.';
+      'Saisissez un congé pour un employé, y compris des jours passés (congé urgent non déclaré). La demande sera approuvée immédiatement. La raison est obligatoire.';
   } else if (emergencyMode) {
     dialogDescription =
-      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants.';
+      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants. La raison est obligatoire.';
   } else if (minSelectableDate) {
     dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`;
   } else {
@@ -685,7 +687,13 @@ export function NewRequestDialog({
             )}
           >
             <Label className="text-sm font-medium">
-              Raison <span className="text-destructive">*</span>
+              Raison
+              {(allowPastDays || emergencyMode) && (
+                <span className="text-destructive"> *</span>
+              )}
+              {!allowPastDays && !emergencyMode && (
+                <span className="text-muted-foreground font-normal"> (facultatif)</span>
+              )}
             </Label>
             <div className="flex min-w-0 items-center gap-2">
               <div className="min-w-0 flex-1">
@@ -701,8 +709,17 @@ export function NewRequestDialog({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-9" aria-required="true">
-                    <SelectValue placeholder="Choisir une raison" />
+                  <SelectTrigger
+                    className="h-9"
+                    aria-required={allowPastDays || emergencyMode}
+                  >
+                    <SelectValue
+                      placeholder={
+                        allowPastDays || emergencyMode
+                          ? 'Choisir une raison'
+                          : 'Choisir une raison (facultatif)'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {LEAVE_REASON_OPTIONS.map((option) => (

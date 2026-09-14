@@ -205,3 +205,11 @@ ACCOUNTANT_EMAIL = [
     for address in _accountant_email.split(',')
     if address.strip()
 ]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Leave request attachments
+LEAVE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
+LEAVE_ATTACHMENT_ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.webp'}
+

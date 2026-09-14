@@ -39,9 +39,8 @@ export default function Dashboard() {
     return null;
   }
 
-  const displayBalances = holidayBalances.filter(
-    (balance) => balance.type === 'annual' || balance.type === 'unpaid',
-  );
+  const annualBalance = holidayBalances.find((balance) => balance.type === 'annual');
+  const unpaidBalance = holidayBalances.find((balance) => balance.type === 'unpaid');
 
   return (
     <div className="space-y-6">
@@ -51,21 +50,18 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {displayBalances.map((balance, index) => (
-          <BalanceCard key={balance.type} balance={balance} index={index} />
-        ))}
-        <NextPublicHolidayCard publicHolidays={publicHolidays} index={displayBalances.length} />
-        <UpcomingLeaveCard requests={recentRequests} index={displayBalances.length + 1} />
+        {annualBalance && <BalanceCard key={annualBalance.type} balance={annualBalance} index={0} />}
+        <NextPublicHolidayCard publicHolidays={publicHolidays} index={1} />
+        <UpcomingLeaveCard requests={recentRequests} index={2} />
+        {unpaidBalance && <BalanceCard key={unpaidBalance.type} balance={unpaidBalance} index={3} />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 lg:grid-rows-[auto_auto] gap-6">
+        <div className="lg:col-span-2 lg:row-span-2 min-h-[280px] h-full">
           <MiniCalendar requests={recentRequests} publicHolidays={publicHolidays} />
         </div>
-        <div className="space-y-6">
-          <TeamAvailability members={teamMembers} />
-          <RecentActivity requests={recentRequests} />
-        </div>
+        <TeamAvailability members={teamMembers} />
+        <RecentActivity requests={recentRequests} />
       </div>
     </div>
   );

@@ -45,10 +45,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatLeaveDates, formatLeaveDuration, formatLeaveDaysNumber } from '@/lib/leave';
 
 const typeLabels: Record<HolidayType, string> = {
-  annual: 'Congés annuels',
-  sick: 'Congés maladie',
-  personal: 'Jour personnel',
-  unpaid: 'Congés sans solde',
+  annual: 'Annuels',
+  sick: 'Maladie',
+  personal: 'Personnel',
+  unpaid: 'Sans solde',
 };
 
 export default function RequestsPage() {
@@ -227,6 +227,18 @@ export default function RequestsPage() {
                         {formatLeaveDuration(request.days, request.halfDayPeriod)}
                       </span>
                     </div>
+                    {request.attachmentUrl && (
+                      <p className="mt-2 text-sm">
+                        <a
+                          href={request.attachmentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          Pièce jointe{request.attachmentName ? ` · ${request.attachmentName}` : ''}
+                        </a>
+                      </p>
+                    )}
                     {request.reason && (
                       <p className="mt-2 text-sm text-foreground bg-secondary/50 px-3 py-2 rounded-lg">
                         "{request.reason}"
@@ -294,8 +306,9 @@ export default function RequestsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les types</SelectItem>
-              <SelectItem value="annual">Congés annuels</SelectItem>
-              <SelectItem value="unpaid">Congés sans solde</SelectItem>
+              <SelectItem value="annual">Annuels</SelectItem>
+              <SelectItem value="sick">Maladie</SelectItem>
+              <SelectItem value="unpaid">Sans solde</SelectItem>
             </SelectContent>
           </Select>
         </div>

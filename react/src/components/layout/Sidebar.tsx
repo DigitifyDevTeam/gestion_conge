@@ -36,6 +36,7 @@ const employeeNavItems = [
 
 const adminNavItems = [
   { path: '/', icon: LayoutDashboard, label: 'Tableau de bord', adminOnly: true },
+  { path: '/calendar', icon: Calendar, label: 'Calendrier', adminOnly: true },
   { path: '/users', icon: UserCog, label: 'Gestion utilisateurs', adminOnly: true },
   { path: '/requests', icon: FileText, label: 'Toutes les demandes', adminOnly: true },
   { path: '/balances', icon: TrendingUp, label: 'Gestion soldes', adminOnly: true },

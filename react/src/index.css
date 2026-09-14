@@ -140,6 +140,26 @@
   .gradient-warning {
     background: linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(25 95% 53%) 100%);
   }
+
+  /* Half-day leave: diagonal split (top-left filled) */
+  .leave-half-diagonal {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.28) 0%,
+      hsl(var(--primary) / 0.28) 50%,
+      transparent 50%
+    ) !important;
+    color: hsl(var(--primary));
+  }
+
+  .leave-half-diagonal-swatch {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary)) 50%,
+      hsl(var(--border)) 50%
+    );
+  }
 }
 
 .app-menu-btn,

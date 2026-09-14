@@ -40,6 +40,8 @@ export interface HolidayRequest {
   status: RequestStatus;
   reason?: string;
   emergency?: boolean;
+  attachmentUrl?: string;
+  attachmentName?: string;
   employeeBalance?: HolidayBalance;
   createdAt: Date;
   reviewedBy?: string;

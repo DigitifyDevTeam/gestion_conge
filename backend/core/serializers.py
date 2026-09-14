@@ -482,7 +482,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'employee_balance',
         )
         extra_kwargs = {
-            'reason': {'required': True, 'allow_blank': False},
+            'reason': {'required': False, 'allow_blank': True},
         }
 
     def validate_type(self, value):

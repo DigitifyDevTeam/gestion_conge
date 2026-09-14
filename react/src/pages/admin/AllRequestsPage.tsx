@@ -47,10 +47,10 @@ import { downloadLeavePlanningExcel } from '@/lib/exportLeavePlanning';
 import { NewRequestDialog } from '@/components/requests/NewRequestDialog';
 
 const typeLabels: Record<HolidayType, string> = {
-  annual: 'Congés annuels',
-  sick: 'Congés maladie',
-  personal: 'Jour personnel',
-  unpaid: 'Congés sans solde',
+  annual: 'Annuels',
+  sick: 'Maladie',
+  personal: 'Personnel',
+  unpaid: 'Sans solde',
 };
 
 const statusLabels: Record<RequestStatus, string> = {
@@ -228,8 +228,9 @@ export default function AllRequestsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les types</SelectItem>
-              <SelectItem value="annual">Congés annuels</SelectItem>
-              <SelectItem value="unpaid">Congés sans solde</SelectItem>
+              <SelectItem value="annual">Annuels</SelectItem>
+              <SelectItem value="sick">Maladie</SelectItem>
+              <SelectItem value="unpaid">Sans solde</SelectItem>
             </SelectContent>
           </Select>
         </div>

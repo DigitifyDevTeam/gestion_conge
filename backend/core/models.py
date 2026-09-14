@@ -148,6 +148,12 @@ class LeaveRequest(models.Model):
     )
     reason = models.TextField(blank=True, default='')
     emergency = models.BooleanField(default=False)
+    attachment = models.FileField(
+        upload_to='leave_attachments/%Y/%m/',
+        blank=True,
+        null=True,
+        help_text='Pièce jointe obligatoire (justificatif).',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -5,9 +5,11 @@ import { Users, Clock, Calendar, TrendingUp, ArrowRight, CheckCircle, XCircle, A
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { YearCalendar } from '@/components/dashboard/YearCalendar';
 import { useAuth } from '@/contexts/AuthContext';
 import { listUsers } from '@/api/users';
 import { listLeaveRequests } from '@/api/leaveRequests';
+import { listPublicHolidays } from '@/api/publicHolidays';
 import { listTeam } from '@/api/team';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -34,6 +36,11 @@ export default function AdminDashboard() {
     queryFn: () => listLeaveRequests(),
     enabled: isAdmin(),
   });
+  const { data: publicHolidays = [] } = useQuery({
+    queryKey: ['public-holidays'],
+    queryFn: listPublicHolidays,
+    enabled: isAdmin(),
+  });
   const { data: teamMembers = [] } = useQuery({
     queryKey: ['team'],
     queryFn: listTeam,
@@ -48,7 +55,6 @@ export default function AdminDashboard() {
   const pendingApprovals = allRequests.filter(r => r.status === 'pending');
   const pendingRequests = pendingApprovals.length;
   const approvedRequests = allRequests.filter(r => r.status === 'approved').length;
-  const rejectedRequests = allRequests.filter(r => r.status === 'rejected').length;
   const employeesOnHoliday = teamMembers.filter(m => m.isOnHoliday).length;
 
   const today = new Date();
@@ -93,46 +99,13 @@ export default function AdminDashboard() {
     },
   ];
 
-  const quickActions = [
-    {
-      title: 'Gérer les utilisateurs',
-      description: 'Créer et modifier les comptes employés',
-      icon: Users,
-      onClick: () => navigate('/users'),
-      color: 'text-primary',
-    },
-    {
-      title: 'Toutes les demandes',
-      description: 'Voir et gérer toutes les demandes',
-      icon: Clock,
-      onClick: () => navigate('/requests'),
-      color: 'text-warning',
-    },
-    {
-      title: 'Gérer les soldes',
-      description: 'Ajuster les soldes de congés',
-      icon: TrendingUp,
-      onClick: () => navigate('/balances'),
-      color: 'text-success',
-    },
-    {
-      title: 'Rapports',
-      description: 'Analyses et statistiques',
-      icon: TrendingUp,
-      onClick: () => navigate('/reports'),
-      color: 'text-chart-1',
-    },
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="animate-fade-in">
         <h1 className="text-2xl font-bold text-foreground">Bon retour, {user?.name}</h1>
         <p className="text-muted-foreground mt-1">Vue d'ensemble de la gestion des congés</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
@@ -155,13 +128,18 @@ export default function AdminDashboard() {
         })}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Pending Approvals */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        <div className="lg:col-span-2 min-h-[520px] h-full">
+          <YearCalendar
+            requests={allRequests}
+            publicHolidays={publicHolidays}
+          />
+        </div>
+
+        <div className="space-y-6">
           <Card className="animate-fade-in" style={{ animationDelay: '400ms' }}>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle>Demandes en attente</CardTitle>
                   <CardDescription>Actions requises immédiatement</CardDescription>
@@ -175,26 +153,27 @@ export default function AdminDashboard() {
             <CardContent>
               {pendingApprovals.length > 0 ? (
                 <div className="space-y-3">
-                  {pendingApprovals.slice(0, 5).map((request, index) => (
+                  {pendingApprovals.slice(0, 5).map((request) => (
                     <div
                       key={request.id}
-                      className="flex items-start justify-between p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                      className="flex items-start justify-between gap-2 p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-foreground">{request.employeeName}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <p className="font-medium text-foreground truncate">{request.employeeName}</p>
                           <Badge variant="pending">En attente</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(request.startDate), 'd MMM', { locale: fr })} - {format(new Date(request.endDate), 'd MMM yyyy', { locale: fr })}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
                           {formatLeaveDuration(request.days, request.halfDayPeriod)} • {request.reason}
                         </p>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="shrink-0"
                         onClick={() => navigate('/requests')}
                       >
                         Examiner
@@ -211,8 +190,40 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* Recent Activity */}
           <Card className="animate-fade-in" style={{ animationDelay: '500ms' }}>
+            <CardHeader>
+              <CardTitle>Congés à venir</CardTitle>
+              <CardDescription>7 prochains jours</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {upcomingHolidays.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingHolidays.slice(0, 5).map((holiday) => (
+                    <div
+                      key={holiday.id}
+                      className="flex items-center justify-between gap-2 p-3 rounded-lg border border-border"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground text-sm truncate">{holiday.employeeName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(holiday.startDate), 'd MMM', { locale: fr })} - {format(new Date(holiday.endDate), 'd MMM', { locale: fr })}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="shrink-0">
+                        {formatLeaveDurationCompact(holiday.days, holiday.halfDayPeriod)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Aucun congé prévu cette semaine
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
             <CardHeader>
               <CardTitle>Activité récente</CardTitle>
               <CardDescription>Dernières actions sur les demandes</CardDescription>
@@ -238,8 +249,8 @@ export default function AdminDashboard() {
                         <AlertCircle className="w-4 h-4 text-warning" />
                       )}
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {request.employeeName}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -258,72 +269,7 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Right Column - Quick Actions & Upcoming */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
-            <CardHeader>
-              <CardTitle>Actions rapides</CardTitle>
-              <CardDescription>Accès rapide aux fonctionnalités</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {quickActions.map((action, index) => {
-                  const Icon = action.icon;
-                  return (
-                    <Button
-                      key={action.title}
-                      variant="outline"
-                      className="w-full justify-start h-auto p-4"
-                      onClick={action.onClick}
-                    >
-                      <Icon className={cn('w-5 h-5 mr-3', action.color)} />
-                      <div className="text-left">
-                        <p className="font-medium text-foreground">{action.title}</p>
-                        <p className="text-xs text-muted-foreground">{action.description}</p>
-                      </div>
-                    </Button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Upcoming Holidays */}
-          <Card className="animate-fade-in" style={{ animationDelay: '700ms' }}>
-            <CardHeader>
-              <CardTitle>Congés à venir</CardTitle>
-              <CardDescription>7 prochains jours</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {upcomingHolidays.length > 0 ? (
-                <div className="space-y-3">
-                  {upcomingHolidays.map((holiday) => (
-                    <div
-                      key={holiday.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-border"
-                    >
-                      <div>
-                        <p className="font-medium text-foreground text-sm">{holiday.employeeName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(holiday.startDate), 'd MMM', { locale: fr })} - {format(new Date(holiday.endDate), 'd MMM', { locale: fr })}
-                        </p>
-                      </div>
-                      <Badge variant="outline">{formatLeaveDurationCompact(holiday.days, holiday.halfDayPeriod)}</Badge>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Aucun congé prévu cette semaine
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
 }
-

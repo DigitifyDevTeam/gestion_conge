@@ -113,7 +113,7 @@ export async function listLeaveRequests(status?: RequestStatus): Promise<Holiday
 export interface LeaveRequestPayload {
   type: HolidayType;
   dates: LeaveDay[];
-  reason: string;
+  reason?: string;
   emergency?: boolean;
   /** Admin-only: create leave on behalf of this employee */
   employeeId?: string;
@@ -126,7 +126,7 @@ function serializePayload(payload: LeaveRequestPayload) {
       date: toDateString(day.date),
       half_day_period: day.halfDayPeriod || null,
     })),
-    reason: payload.reason.trim(),
+    reason: (payload.reason || '').trim(),
     emergency: Boolean(payload.emergency),
     ...(payload.employeeId ? { employee_id: Number(payload.employeeId) } : {}),
   });

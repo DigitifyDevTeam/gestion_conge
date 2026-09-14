@@ -18,13 +18,13 @@ interface HistoryDayEntry {
 function typeLabel(type: HolidayType): string {
   switch (type) {
     case 'annual':
-      return 'Congés annuels';
+      return 'Annuels';
     case 'sick':
-      return 'Congés maladie';
+      return 'Maladie';
     case 'personal':
-      return 'Jour personnel';
+      return 'Personnel';
     case 'unpaid':
-      return 'Congés sans solde';
+      return 'Sans solde';
     default: {
       const exhaustive: never = type;
       return exhaustive;
