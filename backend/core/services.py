@@ -452,8 +452,14 @@ def create_leave_request(
     # Admin backdated entries and sick leave skip the employee notice window.
     effective_emergency = emergency or allow_past
     skip_notice = effective_emergency or leave_type == LeaveType.SICK
-    trimmed_reason = normalize_leave_reason(reason, required=False)
-    validated_attachment = validate_leave_attachment(attachment, required=True)
+    is_sick = leave_type == LeaveType.SICK
+    trimmed_reason = normalize_leave_reason(
+        '' if is_sick else reason,
+        required=effective_emergency and not is_sick,
+    )
+    validated_attachment = (
+        validate_leave_attachment(attachment, required=True) if is_sick else None
+    )
 
     selected, resolved_days = _validate_leave_dates(
         dates,
@@ -580,13 +586,22 @@ def update_leave_request(
             {'type': 'Seuls les congés annuels, maladie et sans solde sont autorisés.'}
         )
 
-    trimmed_reason = normalize_leave_reason(reason, required=False)
-    has_existing_attachment = bool(request.attachment)
-    validated_attachment = validate_leave_attachment(
-        attachment,
-        required=not has_existing_attachment,
+    is_sick = leave_type == LeaveType.SICK
+    trimmed_reason = normalize_leave_reason(
+        '' if is_sick else reason,
+        required=emergency and not is_sick,
     )
-    skip_notice = emergency or leave_type == LeaveType.SICK
+    has_existing_attachment = bool(request.attachment)
+    if is_sick:
+        validated_attachment = validate_leave_attachment(
+            attachment,
+            required=not has_existing_attachment,
+        )
+        clear_attachment = False
+    else:
+        validated_attachment = None
+        clear_attachment = has_existing_attachment
+    skip_notice = emergency or is_sick
     selected, resolved_days = _validate_leave_dates(dates, emergency=skip_notice)
     period = _request_level_period(selected)
     assert_no_overlap(
@@ -622,6 +637,9 @@ def update_leave_request(
     ]
     if validated_attachment is not None:
         request.attachment = validated_attachment
+        update_fields.append('attachment')
+    elif clear_attachment:
+        request.attachment = None
         update_fields.append('attachment')
     request.save(update_fields=update_fields)
     _sync_request_days(request, selected)

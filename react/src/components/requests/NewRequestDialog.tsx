@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -21,12 +22,16 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
+  composeLeaveReason,
   earliestLeaveDate,
   formatLeaveDates,
   formatLeaveDuration,
   holidayDateKeys,
+  isLeaveReasonChoice,
   isWorkingDay,
+  LEAVE_REASON_OPTIONS,
   MIN_LEAVE_NOTICE_DAYS,
+  parseLeaveReason,
   sortLeaveDays,
   sumLeaveDayValues,
   toDateKey,
@@ -36,6 +41,7 @@ import {
   HolidayRequest,
   HolidayType,
   LeaveDay,
+  LeaveReasonChoice,
 } from '@/types/holiday';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -174,6 +180,8 @@ export function NewRequestDialog({
   const isEditing = Boolean(requestToEdit);
   const [selectedType, setSelectedType] = useState<HolidayType>('annual');
   const [selectedDays, setSelectedDays] = useState<LeaveDay[]>([]);
+  const [reasonChoice, setReasonChoice] = useState<LeaveReasonChoice | ''>('');
+  const [otherReason, setOtherReason] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [existingAttachmentName, setExistingAttachmentName] = useState<string | null>(null);
   const [apiConflictKeys, setApiConflictKeys] = useState<string[]>([]);
@@ -221,6 +229,8 @@ export function NewRequestDialog({
   const resetForm = () => {
     setSelectedType('annual');
     setSelectedDays([]);
+    setReasonChoice('');
+    setOtherReason('');
     setAttachment(null);
     setExistingAttachmentName(null);
     setApiConflictKeys([]);
@@ -246,8 +256,13 @@ export function NewRequestDialog({
     }));
     setSelectedType(requestToEdit.type);
     setSelectedDays(editDays);
+    const parsedReason = parseLeaveReason(requestToEdit.reason || '');
+    setReasonChoice(parsedReason.choice);
+    setOtherReason(parsedReason.otherDetail);
     setAttachment(null);
-    setExistingAttachmentName(requestToEdit.attachmentName || null);
+    setExistingAttachmentName(
+      requestToEdit.type === 'sick' ? requestToEdit.attachmentName || null : null,
+    );
     setApiConflictKeys([]);
     setSelectedEmployeeId(requestToEdit.employeeId || '');
     const noticeDate = earliestLeaveDate(new Date(), false);
@@ -482,42 +497,66 @@ export function NewRequestDialog({
     }
 
     const isEmergencyRequest = allowPastDays || emergencyMode;
-    const hasAttachment = Boolean(attachment) || Boolean(existingAttachmentName);
+    const isSick = selectedType === 'sick';
 
-    if (!hasAttachment) {
-      toast({
-        title: 'Pièce jointe requise',
-        description: 'Ajoutez un justificatif (PDF ou image, max 5 Mo).',
-        variant: 'destructive',
-      });
-      return;
+    if (isSick) {
+      const hasAttachment = Boolean(attachment) || Boolean(existingAttachmentName);
+      if (!hasAttachment) {
+        toast({
+          title: 'Pièce jointe requise',
+          description: 'Ajoutez un justificatif (PDF ou image, max 5 Mo).',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (attachment) {
+        if (!isAllowedAttachment(attachment)) {
+          toast({
+            title: 'Format non autorisé',
+            description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        if (attachment.size > ATTACHMENT_MAX_BYTES) {
+          toast({
+            title: 'Fichier trop volumineux',
+            description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+    } else {
+      if (isEmergencyRequest && !reasonChoice) {
+        toast({
+          title: 'Raison requise',
+          description: 'En mode urgence, veuillez sélectionner la raison de votre demande.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (reasonChoice === 'other' && !otherReason.trim()) {
+        toast({
+          title: 'Raison requise',
+          description: 'Veuillez préciser la raison pour « Autre ».',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
-    if (attachment) {
-      if (!isAllowedAttachment(attachment)) {
-        toast({
-          title: 'Format non autorisé',
-          description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      if (attachment.size > ATTACHMENT_MAX_BYTES) {
-        toast({
-          title: 'Fichier trop volumineux',
-          description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
-          variant: 'destructive',
-        });
-        return;
-      }
+    let reason = '';
+    if (!isSick && reasonChoice) {
+      reason = composeLeaveReason(reasonChoice, otherReason);
     }
 
     const payload: LeaveRequestPayload = {
       type: selectedType,
       dates: sortedDays,
-      reason: '',
+      reason,
       emergency: isEmergencyRequest,
-      attachment: attachment || undefined,
+      attachment: isSick ? attachment || undefined : undefined,
       ...(adminMode && selectedEmployeeId ? { employeeId: selectedEmployeeId } : {}),
     };
     if (isEditing) {
@@ -536,17 +575,19 @@ export function NewRequestDialog({
   let dialogDescription: string;
   if (adminMode && !isEditing) {
     dialogDescription =
-      'Saisissez un congé pour un employé, y compris des jours passés. La demande sera approuvée immédiatement. Une pièce jointe est obligatoire.';
+      selectedType === 'sick'
+        ? 'Saisissez un congé maladie pour un employé. Pièce jointe obligatoire. La demande sera approuvée immédiatement.'
+        : 'Saisissez un congé pour un employé, y compris des jours passés. La demande sera approuvée immédiatement. La raison est obligatoire.';
   } else if (selectedType === 'sick') {
     dialogDescription =
       'Congé maladie : vous pouvez sélectionner aujourd’hui et les jours suivants. Une pièce jointe est obligatoire.';
   } else if (emergencyMode) {
     dialogDescription =
-      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants. Une pièce jointe est obligatoire.';
+      'Mode urgence activé : vous pouvez sélectionner aujourd’hui, demain et les jours suivants. La raison est obligatoire.';
   } else if (minSelectableDate) {
-    dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}. Une pièce jointe est obligatoire.`;
+    dialogDescription = `Préavis de ${MIN_LEAVE_NOTICE_DAYS} jours : première date le ${format(minSelectableDate, 'EEEE d MMMM yyyy', { locale: fr })}.`;
   } else {
-    dialogDescription = 'Sélectionnez les jours et joignez un justificatif.';
+    dialogDescription = 'Sélectionnez le type, les jours et renseignez la raison si besoin.';
   }
 
   const attachmentLabel = attachment?.name || existingAttachmentName;
@@ -613,7 +654,19 @@ export function NewRequestDialog({
                   key={type}
                   type="button"
                   title={description}
-                  onClick={() => setSelectedType(type)}
+                  onClick={() => {
+                    setSelectedType(type);
+                    if (type === 'sick') {
+                      setReasonChoice('');
+                      setOtherReason('');
+                    } else {
+                      setAttachment(null);
+                      setExistingAttachmentName(null);
+                      if (attachmentInputRef.current) {
+                        attachmentInputRef.current.value = '';
+                      }
+                    }
+                  }}
                   className={cn(
                     'flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all',
                     selectedType === type
@@ -723,87 +776,151 @@ export function NewRequestDialog({
               adminMode && !isEditing ? 'sm:row-start-4' : 'sm:row-start-3',
             )}
           >
-            <Label className="text-sm font-medium">
-              Pièce jointe <span className="text-destructive">*</span>
-            </Label>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              accept={ATTACHMENT_ACCEPT}
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0] || null;
-                if (!file) {
-                  setAttachment(null);
-                  return;
-                }
-                if (!isAllowedAttachment(file)) {
-                  toast({
-                    title: 'Format non autorisé',
-                    description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
-                    variant: 'destructive',
-                  });
-                  event.target.value = '';
-                  return;
-                }
-                if (file.size > ATTACHMENT_MAX_BYTES) {
-                  toast({
-                    title: 'Fichier trop volumineux',
-                    description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
-                    variant: 'destructive',
-                  });
-                  event.target.value = '';
-                  return;
-                }
-                setAttachment(file);
-                setExistingAttachmentName(null);
-              }}
-            />
-            {attachmentLabel ? (
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2">
-                <FileText className="h-4 w-4 shrink-0 text-primary" />
-                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                  {attachmentLabel}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 shrink-0 px-2"
-                  onClick={() => attachmentInputRef.current?.click()}
-                >
-                  Remplacer
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => {
-                    setAttachment(null);
-                    setExistingAttachmentName(null);
-                    if (attachmentInputRef.current) {
-                      attachmentInputRef.current.value = '';
+            {selectedType === 'sick' ? (
+              <>
+                <Label className="text-sm font-medium">
+                  Pièce jointe <span className="text-destructive">*</span>
+                </Label>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept={ATTACHMENT_ACCEPT}
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    if (!file) {
+                      setAttachment(null);
+                      return;
                     }
+                    if (!isAllowedAttachment(file)) {
+                      toast({
+                        title: 'Format non autorisé',
+                        description: 'Formats acceptés : PDF, PNG, JPG, JPEG, WEBP.',
+                        variant: 'destructive',
+                      });
+                      event.target.value = '';
+                      return;
+                    }
+                    if (file.size > ATTACHMENT_MAX_BYTES) {
+                      toast({
+                        title: 'Fichier trop volumineux',
+                        description: 'La pièce jointe ne doit pas dépasser 5 Mo.',
+                        variant: 'destructive',
+                      });
+                      event.target.value = '';
+                      return;
+                    }
+                    setAttachment(file);
+                    setExistingAttachmentName(null);
                   }}
-                  aria-label="Retirer la pièce jointe"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+                />
+                {attachmentLabel ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                    <FileText className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {attachmentLabel}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2"
+                      onClick={() => attachmentInputRef.current?.click()}
+                    >
+                      Remplacer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        setAttachment(null);
+                        setExistingAttachmentName(null);
+                        if (attachmentInputRef.current) {
+                          attachmentInputRef.current.value = '';
+                        }
+                      }}
+                      aria-label="Retirer la pièce jointe"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-secondary/40 hover:text-foreground"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Ajouter un justificatif (PDF ou image)
+                  </button>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Obligatoire · PDF, PNG, JPG, WEBP · max 5 Mo
+                </p>
+              </>
             ) : (
-              <button
-                type="button"
-                onClick={() => attachmentInputRef.current?.click()}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-secondary/40 hover:text-foreground"
-              >
-                <Upload className="h-4 w-4" />
-                Ajouter un justificatif (PDF ou image)
-              </button>
+              <>
+                <Label className="text-sm font-medium">
+                  Raison
+                  {(allowPastDays || emergencyMode) && (
+                    <span className="text-destructive"> *</span>
+                  )}
+                  {!allowPastDays && !emergencyMode && (
+                    <span className="text-muted-foreground font-normal"> (facultatif)</span>
+                  )}
+                </Label>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={reasonChoice || undefined}
+                      onValueChange={(value) => {
+                        if (!isLeaveReasonChoice(value)) {
+                          return;
+                        }
+                        setReasonChoice(value);
+                        if (value !== 'other') {
+                          setOtherReason('');
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-9"
+                        aria-required={allowPastDays || emergencyMode}
+                      >
+                        <SelectValue
+                          placeholder={
+                            allowPastDays || emergencyMode
+                              ? 'Choisir une raison'
+                              : 'Choisir une raison (facultatif)'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LEAVE_REASON_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {reasonChoice === 'other' && (
+                    <Input
+                      id="leave-reason-other"
+                      placeholder="Précisez la raison..."
+                      value={otherReason}
+                      onChange={(e) => setOtherReason(e.target.value)}
+                      className="h-9 min-w-0 flex-1"
+                      required
+                      aria-required="true"
+                      aria-label="Précisez la raison"
+                    />
+                  )}
+                </div>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">
-              Obligatoire · PDF, PNG, JPG, WEBP · max 5 Mo
-            </p>
           </div>
 
           <div
