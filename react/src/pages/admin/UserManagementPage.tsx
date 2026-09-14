@@ -71,7 +71,7 @@ function toApiPayload(data: UserFormData) {
     role: data.role,
     department: data.department,
     position: data.position,
-    calendar_color: data.calendarColor || '',
+    calendar_color: data.role === 'employee' ? data.calendarColor || '' : '',
   };
 }
 
@@ -415,16 +415,20 @@ export default function UserManagementPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span
-                          className="inline-block h-4 w-4 rounded-full border border-border"
-                          style={{
-                            backgroundColor: resolveEmployeeColor(
-                              user.id,
-                              new Map([[user.id, user.calendarColor]]),
-                            ).bg,
-                          }}
-                          title={user.calendarColor || 'Automatique'}
-                        />
+                        {user.role === 'employee' ? (
+                          <span
+                            className="inline-block h-4 w-4 rounded-full border border-border"
+                            style={{
+                              backgroundColor: resolveEmployeeColor(
+                                user.id,
+                                new Map([[user.id, user.calendarColor]]),
+                              ).bg,
+                            }}
+                            title={user.calendarColor || 'Automatique'}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -496,7 +500,16 @@ export default function UserManagementPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Rôle</Label>
-              <Select value={role} onValueChange={(value) => setValue('role', value as UserRole)}>
+              <Select
+                value={role}
+                onValueChange={(value) => {
+                  const nextRole = value as UserRole;
+                  setValue('role', nextRole);
+                  if (nextRole === 'admin') {
+                    setValue('calendarColor', '', { shouldValidate: true });
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -523,11 +536,13 @@ export default function UserManagementPage() {
                 <p className="text-sm text-destructive">{errors.position.message}</p>
               )}
             </div>
-            <CalendarColorField
-              value={calendarColor}
-              onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
-              error={errors.calendarColor?.message}
-            />
+            {role === 'employee' && (
+              <CalendarColorField
+                value={calendarColor}
+                onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
+                error={errors.calendarColor?.message}
+              />
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
@@ -568,7 +583,16 @@ export default function UserManagementPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role">Rôle</Label>
-              <Select value={role} onValueChange={(value) => setValue('role', value as UserRole)}>
+              <Select
+                value={role}
+                onValueChange={(value) => {
+                  const nextRole = value as UserRole;
+                  setValue('role', nextRole);
+                  if (nextRole === 'admin') {
+                    setValue('calendarColor', '', { shouldValidate: true });
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -592,12 +616,14 @@ export default function UserManagementPage() {
                 <p className="text-sm text-destructive">{errors.position.message}</p>
               )}
             </div>
-            <CalendarColorField
-              value={calendarColor}
-              onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
-              previewUserId={editingUser?.id}
-              error={errors.calendarColor?.message}
-            />
+            {role === 'employee' && (
+              <CalendarColorField
+                value={calendarColor}
+                onChange={(hex) => setValue('calendarColor', hex, { shouldValidate: true })}
+                previewUserId={editingUser?.id}
+                error={errors.calendarColor?.message}
+              />
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"

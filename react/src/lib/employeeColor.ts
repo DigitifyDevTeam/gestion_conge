@@ -116,9 +116,13 @@ export function getEmployeeColor(employeeId: string): EmployeeColor {
 }
 
 export function buildEmployeeColorMap(
-  users: Array<{ id: string; calendarColor?: string | null }>,
+  users: Array<{ id: string; role?: string; calendarColor?: string | null }>,
 ): EmployeeColorMap {
-  return new Map(users.map((user) => [user.id, user.calendarColor || undefined]));
+  return new Map(
+    users
+      .filter((user) => user.role !== 'admin')
+      .map((user) => [user.id, user.calendarColor || undefined]),
+  );
 }
 
 export function resolveEmployeeColor(

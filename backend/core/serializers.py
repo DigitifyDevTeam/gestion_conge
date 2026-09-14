@@ -107,7 +107,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_calendar_color(self, obj):
         profile = self._profile(obj)
-        return profile.calendar_color if profile else ''
+        if not profile or profile.role != UserRole.EMPLOYEE:
+            return ''
+        return profile.calendar_color or ''
 
     def validate_email(self, value):
         qs = User.objects.filter(email__iexact=value)
@@ -126,6 +128,11 @@ class UserSerializer(serializers.ModelSerializer):
                 {'calendar_color': 'Couleur invalide. Utilisez le format #RRGGBB.'}
             )
         return color.upper()
+
+    def _calendar_color_for_role(self, role, value):
+        if role != UserRole.EMPLOYEE:
+            return ''
+        return self._normalize_calendar_color(value)
 
     def _split_name(self, name):
         parts = (name or '').strip().split(None, 1)
@@ -164,7 +171,9 @@ class UserSerializer(serializers.ModelSerializer):
             department=request_data.get('department', ''),
             position=request_data.get('position', ''),
             avatar=request_data.get('avatar', ''),
-            calendar_color=self._normalize_calendar_color(request_data.get('calendar_color', '')),
+            calendar_color=self._calendar_color_for_role(
+                role, request_data.get('calendar_color', '')
+            ),
             email_verified=False,
         )
         if role == UserRole.EMPLOYEE:
@@ -207,7 +216,9 @@ class UserSerializer(serializers.ModelSerializer):
         for field in ('role', 'department', 'position', 'avatar'):
             if field in request_data:
                 setattr(profile, field, request_data.get(field) or '')
-        if 'calendar_color' in request_data:
+        if profile.role != UserRole.EMPLOYEE:
+            profile.calendar_color = ''
+        elif 'calendar_color' in request_data:
             profile.calendar_color = self._normalize_calendar_color(
                 request_data.get('calendar_color', '')
             )
