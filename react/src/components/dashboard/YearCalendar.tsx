@@ -16,6 +16,13 @@ import {
 import { fr } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { HolidayRequest, PublicHoliday } from '@/types/holiday';
 import {
   getEmployeesOnLeaveInYear,
@@ -29,6 +36,7 @@ interface YearCalendarProps {
   requests: HolidayRequest[];
   publicHolidays: PublicHoliday[];
   employeeColorMap?: EmployeeColorMap;
+  employees?: Array<{ id: string; name: string }>;
 }
 
 const WEEK_DAYS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
@@ -149,8 +157,36 @@ export function YearCalendar({
   requests,
   publicHolidays,
   employeeColorMap,
+  employees = [],
 }: YearCalendarProps) {
   const [currentYear, setCurrentYear] = useState(() => getYear(new Date()));
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+
+  const employeeOptions = useMemo(() => {
+    if (employees.length > 0) {
+      return [...employees].sort((a, b) =>
+        a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
+      );
+    }
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const request of requests) {
+      if (!request.employeeId) continue;
+      if (!byId.has(request.employeeId)) {
+        byId.set(request.employeeId, {
+          id: request.employeeId,
+          name: request.employeeName || 'Employé',
+        });
+      }
+    }
+    return [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
+    );
+  }, [employees, requests]);
+
+  const filteredRequests = useMemo(() => {
+    if (employeeFilter === 'all') return requests;
+    return requests.filter((request) => request.employeeId === employeeFilter);
+  }, [requests, employeeFilter]);
 
   const months = useMemo(
     () =>
@@ -161,45 +197,69 @@ export function YearCalendar({
   );
 
   const employeesOnLeave = useMemo(
-    () => getEmployeesOnLeaveInYear(requests, currentYear, employeeColorMap),
-    [requests, currentYear, employeeColorMap],
+    () => getEmployeesOnLeaveInYear(filteredRequests, currentYear, employeeColorMap),
+    [filteredRequests, currentYear, employeeColorMap],
   );
+
+  const selectedEmployeeName =
+    employeeFilter === 'all'
+      ? null
+      : employeeOptions.find((user) => user.id === employeeFilter)?.name || null;
 
   return (
     <div
       className="bg-card rounded-xl border border-border p-5 shadow-card animate-fade-in h-full flex flex-col min-h-0"
       style={{ animationDelay: '300ms' }}
     >
-      <div className="flex items-center justify-between mb-4 shrink-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 shrink-0">
         <div className="flex items-center gap-2">
           <CalendarDays className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-foreground">Calendrier {currentYear}</h3>
+          <h3 className="font-semibold text-foreground">
+            {selectedEmployeeName
+              ? `Calendrier ${currentYear} — ${selectedEmployeeName}`
+              : `Calendrier ${currentYear}`}
+          </h3>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-7 h-7"
-            onClick={() => setCurrentYear((year) => year - 1)}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => setCurrentYear(getYear(new Date()))}
-          >
-            Aujourd&apos;hui
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-7 h-7"
-            onClick={() => setCurrentYear((year) => year + 1)}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+            <SelectTrigger className="w-full sm:w-52 h-8 text-xs">
+              <SelectValue placeholder="Filtrer par employé" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les employés</SelectItem>
+              {employeeOptions.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-7 h-7"
+              onClick={() => setCurrentYear((year) => year - 1)}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setCurrentYear(getYear(new Date()))}
+            >
+              Année
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-7 h-7"
+              onClick={() => setCurrentYear((year) => year + 1)}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -208,7 +268,7 @@ export function YearCalendar({
           <MonthBlock
             key={monthDate.toISOString()}
             monthDate={monthDate}
-            requests={requests}
+            requests={filteredRequests}
             publicHolidays={publicHolidays}
             employeeColorMap={employeeColorMap}
           />
@@ -237,7 +297,9 @@ export function YearCalendar({
         {employeesOnLeave.length > 0 ? (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2">
-              Employés en congé ({currentYear})
+              {selectedEmployeeName
+                ? `Congés — ${selectedEmployeeName} (${currentYear})`
+                : `Employés en congé (${currentYear})`}
             </p>
             <div className="flex flex-wrap gap-x-3 gap-y-1.5 max-h-20 overflow-y-auto pr-1">
               {employeesOnLeave.map((employee) => (

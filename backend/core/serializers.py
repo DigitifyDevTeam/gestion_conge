@@ -528,6 +528,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'reason': {'required': False, 'allow_blank': True},
             'attachment': {'write_only': True},
+            'type': {'error_messages': {'required': 'Le type de congé est obligatoire.'}},
         }
 
     def to_internal_value(self, data):

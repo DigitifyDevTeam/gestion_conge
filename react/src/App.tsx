@@ -19,6 +19,7 @@ import UserManagementPage from "./pages/admin/UserManagementPage";
 import BalanceManagementPage from "./pages/admin/BalanceManagementPage";
 import ReportsPage from "./pages/admin/ReportsPage";
 import RoleDocumentsPage from "./pages/RoleDocumentsPage";
+import LeaveArchivePage from "./pages/admin/LeaveArchivePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,15 @@ const App = () => (
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/requests" element={<RoleRequestsPage />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/admin/history" element={<Navigate to="/archive" replace />} />
+              <Route
+                path="/archive"
+                element={(
+                  <AdminOnly>
+                    <LeaveArchivePage />
+                  </AdminOnly>
+                )}
+              />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/approvals" element={<Navigate to="/requests" replace />} />
               <Route path="/public-holidays" element={<PublicHolidaysPage />} />

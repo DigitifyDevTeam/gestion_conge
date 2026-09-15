@@ -67,11 +67,44 @@ function extractErrorMessage(data: unknown): string {
       if (typeof nested.message === 'string') return nested.message;
     }
     if (Array.isArray(obj.detail)) return String(obj.detail[0]);
-    const firstKey = Object.keys(obj)[0];
-    if (firstKey) {
-      const val = obj[firstKey];
-      if (Array.isArray(val)) return String(val[0]);
-      if (typeof val === 'string') return val;
+
+    const fieldLabels: Record<string, string> = {
+      type: 'Type de congé',
+      dates: 'Dates',
+      reason: 'Raison',
+      attachment: 'Pièce jointe',
+      employee_id: 'Employé',
+      file: 'Fichier',
+      title: 'Titre',
+    };
+
+    const dig = (value: unknown): string | null => {
+      if (value == null) return null;
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = dig(item);
+          if (found) return found;
+        }
+        return null;
+      }
+      if (typeof value === 'object') {
+        for (const nested of Object.values(value as Record<string, unknown>)) {
+          const found = dig(nested);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    for (const [key, val] of Object.entries(obj)) {
+      const message = dig(val);
+      if (!message) continue;
+      const label = fieldLabels[key];
+      if (label && /this field is required/i.test(message)) {
+        return `${label} : ce champ est obligatoire.`;
+      }
+      return message;
     }
   }
   return 'Request failed';

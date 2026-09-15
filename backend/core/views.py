@@ -249,6 +249,8 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Auto year-rollover: runs on session restore / login, no cron needed.
+        services.ensure_annual_leave_renewals()
         return Response(MeSerializer(request.user).data)
 
     def patch(self, request):
@@ -518,6 +520,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveRequestSerializer
 
     def get_queryset(self):
+        services.ensure_annual_leave_renewals()
         qs = LeaveRequest.objects.select_related(
             'employee', 'employee__profile', 'reviewed_by'
         ).prefetch_related(

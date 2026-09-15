@@ -99,7 +99,11 @@ export function Header({ onNewRequest, onMenuClick }: HeaderProps) {
             <DropdownMenuItem onClick={() => navigate('/settings')}>
               Paramètres du profil
             </DropdownMenuItem>
-            {!isAdmin() && (
+            {isAdmin() ? (
+              <DropdownMenuItem onClick={() => navigate('/archive')}>
+                Archives des congés
+              </DropdownMenuItem>
+            ) : (
               <DropdownMenuItem onClick={() => navigate('/history')}>
                 Historique des congés
               </DropdownMenuItem>

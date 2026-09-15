@@ -257,6 +257,16 @@ def renew_annual_balance_if_needed(balance, *, for_year=None, dry_run=False):
     balance.used = Decimal('0')
     balance.last_renewed_year = year
     balance.save(update_fields=['total', 'used', 'last_renewed_year'])
+    notify_user(
+        balance.user,
+        f'Solde {year} renouvelé',
+        (
+            f'Votre solde annuel a été mis à jour pour {year} : '
+            f'{_days_label(new_total)} '
+            f'(18 jours + {_days_label(unused)} reportés).'
+        ),
+        ntype=NotificationType.SUCCESS,
+    )
     return result
 
 
@@ -266,6 +276,8 @@ def renew_annual_leave_balances(*, for_year=None, dry_run=False):
     Renew annual leave for all employees who have not yet been renewed for for_year.
 
     new_total = 18 + unused days (total - used).
+    Triggered automatically by the app (login / balances / leave requests) —
+    no cron job required.
     """
     year = for_year or _current_leave_year()
     balances = (
@@ -298,8 +310,22 @@ def renew_annual_leave_balances(*, for_year=None, dry_run=False):
 
 
 def ensure_annual_leave_renewals():
-    """Best-effort auto renewal when the calendar year has changed."""
-    return renew_annual_leave_balances(for_year=_current_leave_year(), dry_run=False)
+    """
+    Automatic year-rollover used by the API.
+
+    On/after 1 January, the first authenticated call renews every employee:
+    new_total = 18 + unused (total - used). Safe to call often (no-op once done).
+    """
+    year = _current_leave_year()
+    needs_renewal = LeaveBalance.objects.filter(
+        type=LeaveType.ANNUAL,
+        user__profile__role=UserRole.EMPLOYEE,
+    ).filter(
+        Q(last_renewed_year__isnull=True) | Q(last_renewed_year__lt=year)
+    ).exists()
+    if not needs_renewal:
+        return {'year': year, 'renewed_count': 0, 'renewed': []}
+    return renew_annual_leave_balances(for_year=year, dry_run=False)
 
 
 def assert_sufficient_balance(user, leave_type, days, extra_credit=None):

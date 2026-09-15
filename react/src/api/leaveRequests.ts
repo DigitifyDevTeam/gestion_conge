@@ -124,18 +124,31 @@ export interface LeaveRequestPayload {
   employeeId?: string;
 }
 
+function buildLeaveRequestDates(payload: LeaveRequestPayload) {
+  return payload.dates.map((day) => ({
+    date: toDateString(day.date),
+    half_day_period: day.halfDayPeriod || null,
+  }));
+}
+
+/** JSON body — prefer this when there is no file (avoids multipart/proxy issues). */
+function buildLeaveRequestJson(payload: LeaveRequestPayload): string {
+  const body: Record<string, unknown> = {
+    type: payload.type,
+    dates: buildLeaveRequestDates(payload),
+    reason: (payload.reason || '').trim(),
+    emergency: Boolean(payload.emergency),
+  };
+  if (payload.employeeId) {
+    body.employee_id = payload.employeeId;
+  }
+  return JSON.stringify(body);
+}
+
 function buildLeaveRequestFormData(payload: LeaveRequestPayload): FormData {
   const formData = new FormData();
   formData.append('type', payload.type);
-  formData.append(
-    'dates',
-    JSON.stringify(
-      payload.dates.map((day) => ({
-        date: toDateString(day.date),
-        half_day_period: day.halfDayPeriod || null,
-      })),
-    ),
-  );
+  formData.append('dates', JSON.stringify(buildLeaveRequestDates(payload)));
   formData.append('reason', (payload.reason || '').trim());
   formData.append('emergency', payload.emergency ? 'true' : 'false');
   if (payload.employeeId) {
@@ -147,12 +160,21 @@ function buildLeaveRequestFormData(payload: LeaveRequestPayload): FormData {
   return formData;
 }
 
+function buildLeaveRequestBody(payload: LeaveRequestPayload): BodyInit {
+  // Only use multipart when a file is present. Empty FormData through some
+  // PHP proxies yields an empty body → DRF "This field is required" on type.
+  if (payload.attachment) {
+    return buildLeaveRequestFormData(payload);
+  }
+  return buildLeaveRequestJson(payload);
+}
+
 export async function createLeaveRequest(
   payload: LeaveRequestPayload,
 ): Promise<HolidayRequest> {
   const data = await apiFetch<ApiLeaveRequest>('/leave-requests/', {
     method: 'POST',
-    body: buildLeaveRequestFormData(payload),
+    body: buildLeaveRequestBody(payload),
   });
   return mapLeaveRequest(data);
 }
@@ -163,7 +185,7 @@ export async function updateLeaveRequest(
 ): Promise<HolidayRequest> {
   const data = await apiFetch<ApiLeaveRequest>(`/leave-requests/${id}/`, {
     method: 'PATCH',
-    body: buildLeaveRequestFormData(payload),
+    body: buildLeaveRequestBody(payload),
   });
   return mapLeaveRequest(data);
 }

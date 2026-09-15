@@ -137,6 +137,9 @@ export default function AdminDashboard() {
             requests={allRequests}
             publicHolidays={publicHolidays}
             employeeColorMap={employeeColorMap}
+            employees={users
+              .filter((user) => user.role === 'employee')
+              .map((user) => ({ id: user.id, name: user.name }))}
           />
         </div>
 
