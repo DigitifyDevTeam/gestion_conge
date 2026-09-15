@@ -213,3 +213,15 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LEAVE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 LEAVE_ATTACHMENT_ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.webp'}
 
+# Employee HR documents (payslips, contracts, etc.)
+EMPLOYEE_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
+EMPLOYEE_DOCUMENT_ALLOWED_EXTENSIONS = {
+    '.pdf',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.doc',
+    '.docx',
+}
+

@@ -1,8 +1,11 @@
 import logging
+import mimetypes
 from datetime import date
+from pathlib import Path
 
 from django.contrib.auth.models import User
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
+from django.http import FileResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -14,6 +17,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .email_otp import issue_and_send_otp, verify_otp
 from .models import (
     EmailOTPPurpose,
+    EmployeeDocument,
     LeaveBalance,
     LeaveRequest,
     LeaveType,
@@ -27,6 +31,7 @@ from .serializers import (
     ActivateAccountSerializer,
     EmailOnlySerializer,
     EmailTokenObtainPairSerializer,
+    EmployeeDocumentSerializer,
     LeaveBalanceSerializer,
     LeaveRequestSerializer,
     SetAnnualAllocationSerializer,
@@ -382,6 +387,7 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'patch', 'put', 'head', 'options']
 
     def get_queryset(self):
+        services.ensure_annual_leave_renewals()
         qs = LeaveBalance.objects.select_related('user', 'user__profile').filter(
             user__profile__role=UserRole.EMPLOYEE,
         )
@@ -439,6 +445,71 @@ class LeaveBalanceViewSet(viewsets.ModelViewSet):
                 ('En attente', f'{instance.pending} jours'),
             ],
             email_cta_path='/balances',
+        )
+        return response
+
+
+class EmployeeDocumentViewSet(viewsets.ModelViewSet):
+    """HR documents: employees see/download own files; admins have full CRUD."""
+
+    serializer_class = EmployeeDocumentSerializer
+    http_method_names = ['get', 'post', 'patch', 'put', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        qs = EmployeeDocument.objects.select_related(
+            'employee',
+            'employee__profile',
+            'uploaded_by',
+        ).filter(employee__profile__role=UserRole.EMPLOYEE)
+
+        if is_admin_user(self.request.user):
+            employee_id = self.request.query_params.get('employee_id') or self.request.query_params.get(
+                'user_id'
+            )
+            if employee_id:
+                qs = qs.filter(employee_id=employee_id)
+            category = self.request.query_params.get('category')
+            if category:
+                qs = qs.filter(category=category)
+            search = (self.request.query_params.get('search') or '').strip()
+            if search:
+                qs = qs.filter(
+                    Q(title__icontains=search)
+                    | Q(description__icontains=search)
+                    | Q(original_name__icontains=search)
+                    | Q(employee__first_name__icontains=search)
+                    | Q(employee__last_name__icontains=search)
+                    | Q(employee__email__icontains=search)
+                )
+            return qs.order_by('-created_at')
+
+        return qs.filter(employee=self.request.user).order_by('-created_at')
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'download'):
+            return [IsAuthenticated()]
+        return [IsAdminRole()]
+
+    def perform_destroy(self, instance):
+        services.delete_employee_document(instance)
+
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        document = self.get_object()
+        if not document.file:
+            return Response(
+                {'detail': 'Fichier introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = document.original_name or Path(document.file.name).name
+        content_type, _ = mimetypes.guess_type(filename)
+        inline = request.query_params.get('inline') in ('1', 'true', 'yes')
+        response = FileResponse(
+            document.file.open('rb'),
+            content_type=content_type or 'application/octet-stream',
+            as_attachment=not inline,
+            filename=filename,
         )
         return response
 

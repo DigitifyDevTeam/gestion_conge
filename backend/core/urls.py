@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     ActivateAccountView,
     EmailTokenObtainPairView,
+    EmployeeDocumentViewSet,
     ForgotPasswordView,
     LeaveBalanceViewSet,
     LeaveRequestViewSet,
@@ -26,6 +27,7 @@ router.register(r'leave-balances', LeaveBalanceViewSet, basename='leave-balance'
 router.register(r'leave-requests', LeaveRequestViewSet, basename='leave-request')
 router.register(r'public-holidays', PublicHolidayViewSet, basename='public-holiday')
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'employee-documents', EmployeeDocumentViewSet, basename='employee-document')
 
 urlpatterns = [
     path('auth/token/', EmailTokenObtainPairView.as_view(), name='token_obtain_pair'),

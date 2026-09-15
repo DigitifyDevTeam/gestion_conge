@@ -18,6 +18,7 @@ import PublicHolidaysPage from "./pages/PublicHolidaysPage";
 import UserManagementPage from "./pages/admin/UserManagementPage";
 import BalanceManagementPage from "./pages/admin/BalanceManagementPage";
 import ReportsPage from "./pages/admin/ReportsPage";
+import RoleDocumentsPage from "./pages/RoleDocumentsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/team" element={<TeamPage />} />
               <Route path="/approvals" element={<Navigate to="/requests" replace />} />
               <Route path="/public-holidays" element={<PublicHolidaysPage />} />
+              <Route path="/documents" element={<RoleDocumentsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route

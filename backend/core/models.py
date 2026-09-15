@@ -50,6 +50,13 @@ class NotificationType(models.TextChoices):
     REMINDER = 'reminder', 'Reminder'
 
 
+class DocumentCategory(models.TextChoices):
+    PAYSLIP = 'payslip', 'Fiche de paie'
+    CONTRACT = 'contract', 'Contrat'
+    CERTIFICATE = 'certificate', 'Attestation'
+    OTHER = 'other', 'Autre'
+
+
 class EmployeeProfile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -117,6 +124,12 @@ class LeaveBalance(models.Model):
     total = models.DecimalField(max_digits=6, decimal_places=1, default=0)
     used = models.DecimalField(max_digits=6, decimal_places=1, default=0)
     pending = models.DecimalField(max_digits=6, decimal_places=1, default=0)
+    last_renewed_year = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Année civile pour laquelle le solde annuel a déjà été renouvelé '
+                  '(allocation + report des jours non utilisés).',
+    )
 
     class Meta:
         unique_together = ('user', 'type')
@@ -247,3 +260,42 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'{self.title} → {self.user_id}'
+
+
+class EmployeeDocument(models.Model):
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='documents',
+        help_text='Employé destinataire du document.',
+    )
+    title = models.CharField(max_length=200)
+    category = models.CharField(
+        max_length=20,
+        choices=DocumentCategory.choices,
+        default=DocumentCategory.OTHER,
+    )
+    description = models.TextField(blank=True, default='')
+    file = models.FileField(
+        upload_to='employee_documents/%Y/%m/',
+        help_text='Fichier visible uniquement par cet employé et les administrateurs.',
+    )
+    original_name = models.CharField(max_length=255, blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_documents',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'category']),
+        ]
+
+    def __str__(self):
+        return f'{self.title} → {self.employee_id}'

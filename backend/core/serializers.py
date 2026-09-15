@@ -11,6 +11,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .invites import send_activation_email
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
+    DocumentCategory,
+    EmployeeDocument,
     EmployeeProfile,
     HalfDayPeriod,
     LeaveBalance,
@@ -693,3 +695,99 @@ class TeamMemberSerializer(serializers.Serializer):
     leave_start = serializers.DateField(allow_null=True)
     leave_end = serializers.DateField(allow_null=True)
     leave_days = serializers.FloatField(allow_null=True)
+
+
+class EmployeeDocumentSerializer(serializers.ModelSerializer):
+    employee_id = serializers.IntegerField(write_only=True, required=False)
+    employee = serializers.IntegerField(source='employee_id', read_only=True)
+    employee_name = serializers.SerializerMethodField()
+    employee_email = serializers.SerializerMethodField()
+    category_label = serializers.SerializerMethodField()
+    file = serializers.FileField(write_only=True, required=False)
+    file_name = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeDocument
+        fields = (
+            'id',
+            'employee_id',
+            'employee',
+            'employee_name',
+            'employee_email',
+            'title',
+            'category',
+            'category_label',
+            'description',
+            'file',
+            'file_name',
+            'download_url',
+            'uploaded_by_name',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = (
+            'id',
+            'employee',
+            'employee_name',
+            'employee_email',
+            'category_label',
+            'file_name',
+            'download_url',
+            'uploaded_by_name',
+            'created_at',
+            'updated_at',
+        )
+
+    def get_employee_name(self, obj):
+        return display_name(obj.employee)
+
+    def get_employee_email(self, obj):
+        return obj.employee.email or ''
+
+    def get_category_label(self, obj):
+        return obj.get_category_display()
+
+    def get_file_name(self, obj):
+        if obj.original_name:
+            return obj.original_name
+        name = obj.file.name or ''
+        return name.rsplit('/', 1)[-1] if name else None
+
+    def get_uploaded_by_name(self, obj):
+        if not obj.uploaded_by_id:
+            return None
+        return display_name(obj.uploaded_by)
+
+    def get_download_url(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return f'/api/employee-documents/{obj.pk}/download/'
+        return request.build_absolute_uri(f'/api/employee-documents/{obj.pk}/download/')
+
+    def create(self, validated_data):
+        request = self.context['request']
+        upload = validated_data.pop('file', None)
+        employee_id = validated_data.pop('employee_id', None)
+        if employee_id is None:
+            raise serializers.ValidationError({'employee_id': 'Sélectionnez un employé.'})
+        return services.create_employee_document(
+            employee_id=employee_id,
+            title=validated_data.get('title'),
+            category=validated_data.get('category', DocumentCategory.OTHER),
+            description=validated_data.get('description', ''),
+            upload=upload,
+            uploaded_by=request.user,
+        )
+
+    def update(self, instance, validated_data):
+        upload = validated_data.pop('file', None)
+        return services.update_employee_document(
+            instance,
+            title=validated_data.get('title'),
+            category=validated_data.get('category'),
+            description=validated_data.get('description'),
+            employee_id=validated_data.get('employee_id'),
+            upload=upload,
+        )

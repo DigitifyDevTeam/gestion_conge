@@ -122,6 +122,63 @@ export async function apiFetch<T>(
   return data as T;
 }
 
+/** Authenticated binary download (HR documents, etc.). */
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+  retry = true,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const headers = new Headers(options.headers || {});
+  const token = getAccessToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (res.status === 401 && retry) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return apiFetchBlob(path, options, false);
+    }
+    clearTokens();
+    if (window.location.pathname !== '/') {
+      window.location.href = '/';
+    }
+    throw new ApiError(401, null, 'Unauthorized');
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    let data: unknown = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    throw new ApiError(res.status, data, extractErrorMessage(data));
+  }
+
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const plainMatch = /filename="?([^";]+)"?/i.exec(disposition);
+  let filename: string | null = null;
+  if (utfMatch?.[1]) {
+    try {
+      filename = decodeURIComponent(utfMatch[1]);
+    } catch {
+      filename = utfMatch[1];
+    }
+  } else if (plainMatch?.[1]) {
+    filename = plainMatch[1];
+  }
+
+  return { blob: await res.blob(), filename };
+}
+
 export function toDateString(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

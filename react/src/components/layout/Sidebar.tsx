@@ -12,7 +12,8 @@ import {
   Shield,
   BarChart3,
   UserCog,
-  TrendingUp
+  TrendingUp,
+  FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ const employeeNavItems = [
   { path: '/', icon: LayoutDashboard, label: 'Tableau de bord' },
   { path: '/calendar', icon: Calendar, label: 'Calendrier' },
   { path: '/requests', icon: FileText, label: 'Mes demandes' },
+  { path: '/documents', icon: FolderOpen, label: 'Mes documents' },
   { path: '/history', icon: History, label: 'Historique' },
   { path: '/public-holidays', icon: Flag, label: 'Jours fériés' },
 ];
@@ -39,6 +41,7 @@ const adminNavItems = [
   { path: '/calendar', icon: Calendar, label: 'Calendrier', adminOnly: true },
   { path: '/users', icon: UserCog, label: 'Gestion utilisateurs', adminOnly: true },
   { path: '/requests', icon: FileText, label: 'Toutes les demandes', adminOnly: true },
+  { path: '/documents', icon: FolderOpen, label: 'Documents employés', adminOnly: true },
   { path: '/balances', icon: TrendingUp, label: 'Gestion soldes', adminOnly: true },
   { path: '/reports', icon: BarChart3, label: 'Rapports', adminOnly: true },
   { path: '/public-holidays', icon: Flag, label: 'Jours fériés' },

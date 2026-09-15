@@ -3,6 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 
 from .models import (
+    EmployeeDocument,
     EmployeeProfile,
     EmailOTP,
     LeaveBalance,
@@ -44,8 +45,8 @@ class EmailOTPAdmin(admin.ModelAdmin):
 
 @admin.register(LeaveBalance)
 class LeaveBalanceAdmin(admin.ModelAdmin):
-    list_display = ('user', 'type', 'total', 'used', 'pending')
-    list_filter = ('type',)
+    list_display = ('user', 'type', 'total', 'used', 'pending', 'last_renewed_year')
+    list_filter = ('type', 'last_renewed_year')
     search_fields = ('user__username', 'user__email')
 
 
@@ -86,3 +87,27 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ('user', 'title', 'type', 'read', 'created_at')
     list_filter = ('type', 'read')
     search_fields = ('title', 'message', 'user__email')
+
+
+@admin.register(EmployeeDocument)
+class EmployeeDocumentAdmin(admin.ModelAdmin):
+    list_display = (
+        'title',
+        'employee',
+        'category',
+        'original_name',
+        'uploaded_by',
+        'created_at',
+    )
+    list_filter = ('category', 'created_at')
+    search_fields = (
+        'title',
+        'description',
+        'original_name',
+        'employee__username',
+        'employee__email',
+        'employee__first_name',
+        'employee__last_name',
+    )
+    raw_id_fields = ('employee', 'uploaded_by')
+    readonly_fields = ('original_name', 'created_at', 'updated_at')

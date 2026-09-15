@@ -5,6 +5,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -12,6 +13,8 @@ from .email_notifications import send_admin_alert_email, send_employee_leave_dec
 from .permissions import can_have_leave
 from .models import (
     DEFAULT_LEAVE_ALLOCATIONS,
+    DocumentCategory,
+    EmployeeDocument,
     HalfDayPeriod,
     LeaveBalance,
     LeaveRequest,
@@ -161,24 +164,34 @@ def notify_admins(
         )
 
 
+def _current_leave_year():
+    return timezone.localdate().year
+
+
 def ensure_employee_leave_balances(user):
     if not can_have_leave(user):
         return
+    year = _current_leave_year()
     for leave_type, total in DEFAULT_LEAVE_ALLOCATIONS.items():
+        defaults = {
+            'total': total,
+            'used': 0,
+            'pending': 0,
+        }
+        if leave_type == LeaveType.ANNUAL:
+            defaults['last_renewed_year'] = year
         LeaveBalance.objects.get_or_create(
             user=user,
             type=leave_type,
-            defaults={
-                'total': total,
-                'used': 0,
-                'pending': 0,
-            },
+            defaults=defaults,
         )
 
 
 def remove_leave_data_for_user(user):
     LeaveRequest.objects.filter(employee=user).delete()
     LeaveBalance.objects.filter(user=user).delete()
+    for document in EmployeeDocument.objects.filter(employee=user):
+        delete_employee_document(document)
 
 
 def get_or_create_balance(user, leave_type):
@@ -186,16 +199,107 @@ def get_or_create_balance(user, leave_type):
         raise ValidationError(
             {'employee': 'Seuls les employés peuvent avoir des congés.'}
         )
+    defaults = {
+        'total': DEFAULT_LEAVE_ALLOCATIONS.get(leave_type, 0),
+        'used': 0,
+        'pending': 0,
+    }
+    if leave_type == LeaveType.ANNUAL:
+        defaults['last_renewed_year'] = _current_leave_year()
     balance, _ = LeaveBalance.objects.get_or_create(
         user=user,
         type=leave_type,
-        defaults={
-            'total': DEFAULT_LEAVE_ALLOCATIONS.get(leave_type, 0),
-            'used': 0,
-            'pending': 0,
-        },
+        defaults=defaults,
     )
+    if leave_type == LeaveType.ANNUAL:
+        renew_annual_balance_if_needed(balance)
+        balance.refresh_from_db()
     return balance
+
+
+def renew_annual_balance_if_needed(balance, *, for_year=None, dry_run=False):
+    """
+    Renew one annual balance for a new calendar year.
+
+    Formula: total = yearly allocation (18) + unused days from previous period.
+    Unused days = max(total - used, 0) — only accepted leave counts; pending
+    is ignored (refused requests never become used, so they stay in the report).
+    used is reset to 0; pending requests stay reserved.
+    Idempotent via last_renewed_year.
+    """
+    if balance.type != LeaveType.ANNUAL:
+        return None
+
+    year = for_year or _current_leave_year()
+    if balance.last_renewed_year is not None and balance.last_renewed_year >= year:
+        return None
+
+    yearly = Decimal(DEFAULT_LEAVE_ALLOCATIONS[LeaveType.ANNUAL])
+    unused = balance.total - balance.used
+    if unused < 0:
+        unused = Decimal('0')
+
+    new_total = yearly + unused
+    result = {
+        'user_id': balance.user_id,
+        'year': year,
+        'previous_total': balance.total,
+        'previous_used': balance.used,
+        'previous_pending': balance.pending,
+        'carried': unused,
+        'new_total': new_total,
+    }
+
+    if dry_run:
+        return result
+
+    balance.total = new_total
+    balance.used = Decimal('0')
+    balance.last_renewed_year = year
+    balance.save(update_fields=['total', 'used', 'last_renewed_year'])
+    return result
+
+
+@transaction.atomic
+def renew_annual_leave_balances(*, for_year=None, dry_run=False):
+    """
+    Renew annual leave for all employees who have not yet been renewed for for_year.
+
+    new_total = 18 + unused days (total - used).
+    """
+    year = for_year or _current_leave_year()
+    balances = (
+        LeaveBalance.objects.select_for_update()
+        .filter(
+            type=LeaveType.ANNUAL,
+            user__profile__role=UserRole.EMPLOYEE,
+        )
+        .filter(
+            Q(last_renewed_year__isnull=True)
+            | Q(last_renewed_year__lt=year)
+        )
+        .select_related('user')
+    )
+
+    renewed = []
+    for balance in balances:
+        result = renew_annual_balance_if_needed(
+            balance,
+            for_year=year,
+            dry_run=dry_run,
+        )
+        if result:
+            renewed.append(result)
+    return {
+        'year': year,
+        'renewed_count': len(renewed),
+        'renewed': renewed,
+    }
+
+
+def ensure_annual_leave_renewals():
+    """Best-effort auto renewal when the calendar year has changed."""
+    return renew_annual_leave_balances(for_year=_current_leave_year(), dry_run=False)
 
 
 def assert_sufficient_balance(user, leave_type, days, extra_credit=None):
@@ -331,6 +435,133 @@ def validate_leave_attachment(attachment, *, required=True):
             {'attachment': 'La pièce jointe ne doit pas dépasser 5 Mo.'}
         )
     return attachment
+
+
+def validate_employee_document_file(upload, *, required=True):
+    if upload in (None, ''):
+        if required:
+            raise ValidationError({'file': 'Un fichier est obligatoire.'})
+        return None
+
+    name = getattr(upload, 'name', '') or ''
+    extension = Path(name).suffix.lower()
+    allowed = getattr(
+        settings,
+        'EMPLOYEE_DOCUMENT_ALLOWED_EXTENSIONS',
+        {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.doc', '.docx'},
+    )
+    if extension not in allowed:
+        raise ValidationError(
+            {
+                'file': (
+                    'Format non autorisé. Formats acceptés : '
+                    'PDF, PNG, JPG, JPEG, WEBP, DOC, DOCX.'
+                )
+            }
+        )
+
+    max_bytes = getattr(settings, 'EMPLOYEE_DOCUMENT_MAX_BYTES', 10 * 1024 * 1024)
+    size = getattr(upload, 'size', None)
+    if size is not None and size > max_bytes:
+        raise ValidationError({'file': 'Le fichier ne doit pas dépasser 10 Mo.'})
+    return upload
+
+
+def _resolve_document_employee(employee_id):
+    try:
+        employee = User.objects.select_related('profile').get(pk=employee_id)
+    except User.DoesNotExist as exc:
+        raise ValidationError({'employee_id': 'Employé introuvable.'}) from exc
+    if not can_have_leave(employee):
+        raise ValidationError(
+            {'employee_id': 'Les documents RH sont réservés aux comptes employés.'}
+        )
+    return employee
+
+
+def create_employee_document(
+    *,
+    employee_id,
+    title,
+    category,
+    description='',
+    upload,
+    uploaded_by=None,
+):
+    employee = _resolve_document_employee(employee_id)
+    validated = validate_employee_document_file(upload, required=True)
+    category_value = category or DocumentCategory.OTHER
+    if category_value not in DocumentCategory.values:
+        raise ValidationError({'category': 'Catégorie de document invalide.'})
+
+    title_clean = (title or '').strip()
+    if not title_clean:
+        raise ValidationError({'title': 'Le titre est obligatoire.'})
+
+    original_name = Path(getattr(validated, 'name', '') or '').name
+    document = EmployeeDocument.objects.create(
+        employee=employee,
+        title=title_clean,
+        category=category_value,
+        description=(description or '').strip(),
+        file=validated,
+        original_name=original_name,
+        uploaded_by=uploaded_by,
+    )
+    notify_user(
+        employee,
+        'Nouveau document disponible',
+        f'Un document « {document.title} » a été ajouté à votre espace Mes documents.',
+        ntype=NotificationType.INFO,
+    )
+    return document
+
+
+def update_employee_document(
+    document: EmployeeDocument,
+    *,
+    title=None,
+    category=None,
+    description=None,
+    employee_id=None,
+    upload=None,
+):
+    if employee_id is not None:
+        document.employee = _resolve_document_employee(employee_id)
+
+    if title is not None:
+        title_clean = title.strip()
+        if not title_clean:
+            raise ValidationError({'title': 'Le titre est obligatoire.'})
+        document.title = title_clean
+
+    if category is not None:
+        if category not in DocumentCategory.values:
+            raise ValidationError({'category': 'Catégorie de document invalide.'})
+        document.category = category
+
+    if description is not None:
+        document.description = description.strip()
+
+    if upload not in (None, ''):
+        validated = validate_employee_document_file(upload, required=True)
+        old_file = document.file
+        document.file = validated
+        document.original_name = Path(getattr(validated, 'name', '') or '').name
+        document.save()
+        if old_file and old_file.name:
+            old_file.delete(save=False)
+        return document
+
+    document.save()
+    return document
+
+
+def delete_employee_document(document: EmployeeDocument):
+    file_field = document.file
+    document.delete()
+    if file_field and file_field.name:
+        file_field.delete(save=False)
 
 
 def _normalize_period(value):
