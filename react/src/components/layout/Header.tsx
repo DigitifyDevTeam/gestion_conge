@@ -1,4 +1,4 @@
-import { Menu, Search, Plus, LogOut, Shield } from 'lucide-react';
+import { Menu, Plus, LogOut, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,13 +14,14 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { HeaderSearch } from '@/components/layout/HeaderSearch';
 
 interface HeaderProps {
   onNewRequest: () => void;
   onMenuClick: () => void;
 }
 
-export function Header({ onNewRequest, onMenuClick }: HeaderProps) {
+export function Header({ onNewRequest, onMenuClick }: Readonly<HeaderProps>) {
   const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
 
@@ -46,16 +47,7 @@ export function Header({ onNewRequest, onMenuClick }: HeaderProps) {
         >
           <Menu className="w-5 h-5" />
         </Button>
-        <div className="app-header-search flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Rechercher des demandes, membres de l'équipe..."
-              className="w-full h-10 pl-10 pr-4 rounded-lg bg-secondary/50 border-0 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-            />
-          </div>
-        </div>
+        <HeaderSearch />
       </div>
 
       {/* Actions */}

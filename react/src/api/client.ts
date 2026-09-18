@@ -1,3 +1,5 @@
+import { queryClient } from '@/lib/queryClient';
+
 const ACCESS_KEY = 'access_token';
 const REFRESH_KEY = 'refresh_token';
 
@@ -33,6 +35,12 @@ export function clearTokens() {
   localStorage.removeItem('user');
 }
 
+/** Token wipe + React Query cache — use whenever the auth session is dead. */
+export function clearAuthState() {
+  clearTokens();
+  queryClient.clear();
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return null;
@@ -43,14 +51,14 @@ async function refreshAccessToken(): Promise<string | null> {
       body: JSON.stringify({ refresh }),
     });
     if (!res.ok) {
-      clearTokens();
+      clearAuthState();
       return null;
     }
     const data = await res.json();
     localStorage.setItem(ACCESS_KEY, data.access);
     return data.access as string;
   } catch {
-    clearTokens();
+    clearAuthState();
     return null;
   }
 }
@@ -134,7 +142,7 @@ export async function apiFetch<T>(
     if (newToken) {
       return apiFetch<T>(path, options, false);
     }
-    clearTokens();
+    clearAuthState();
     if (window.location.pathname !== '/') {
       window.location.href = '/';
     }
@@ -177,7 +185,7 @@ export async function apiFetchBlob(
     if (newToken) {
       return apiFetchBlob(path, options, false);
     }
-    clearTokens();
+    clearAuthState();
     if (window.location.pathname !== '/') {
       window.location.href = '/';
     }

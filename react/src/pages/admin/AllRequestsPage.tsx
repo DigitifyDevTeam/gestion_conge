@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -74,12 +75,29 @@ export default function AllRequestsPage() {
     queryKey: ['public-holidays'],
     queryFn: listPublicHolidays,
   });
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | null>(null);
   const [comment, setComment] = useState('');
   const [newRequestOpen, setNewRequestOpen] = useState(false);
+
+  useEffect(() => {
+    const q = searchParams.get('q') || '';
+    setSearchQuery((current) => (current === q ? current : q));
+  }, [searchParams]);
+
+  const updateSearchQuery = (value: string) => {
+    setSearchQuery(value);
+    const next = new URLSearchParams(searchParams);
+    if (value.trim()) {
+      next.set('q', value.trim());
+    } else {
+      next.delete('q');
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const filteredRequests = allRequests.filter(request => {
     if (searchQuery && !request.employeeName.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -205,7 +223,7 @@ export default function AllRequestsPage() {
           <Input
             placeholder="Rechercher par nom d'employé..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => updateSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>

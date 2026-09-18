@@ -2,10 +2,11 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppShell, AdminOnly } from "@/components/auth/AppShell";
+import { queryClient } from "@/lib/queryClient";
 import ActivateAccountPage from "./pages/ActivateAccountPage";
 import HomeDashboard from "./pages/HomeDashboard";
 import CalendarPage from "./pages/CalendarPage";
@@ -21,8 +22,6 @@ import ReportsPage from "./pages/admin/ReportsPage";
 import RoleDocumentsPage from "./pages/RoleDocumentsPage";
 import LeaveArchivePage from "./pages/admin/LeaveArchivePage";
 import NotFound from "./pages/NotFound";
-
-const queryClient = new QueryClient();
 
 function IndexHtmlRedirect() {
   const location = useLocation();

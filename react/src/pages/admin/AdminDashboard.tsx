@@ -16,6 +16,64 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { formatLeaveDuration, formatLeaveDurationCompact } from '@/lib/leave';
 import { buildEmployeeColorMap } from '@/lib/employeeColor';
+import { HolidayRequest } from '@/types/holiday';
+
+function startOfLocalDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function activityTimestamp(request: HolidayRequest): number {
+  const reviewed = request.reviewedAt?.getTime();
+  if (reviewed) {
+    return reviewed;
+  }
+  return request.createdAt.getTime();
+}
+
+function statusLabel(status: HolidayRequest['status']): string {
+  switch (status) {
+    case 'approved':
+      return 'Approuvé';
+    case 'rejected':
+      return 'Rejeté';
+    case 'pending':
+      return 'En attente';
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
+function statusActionLabel(status: HolidayRequest['status']): string {
+  switch (status) {
+    case 'approved':
+      return 'Demande approuvée';
+    case 'rejected':
+      return 'Demande rejetée';
+    case 'pending':
+      return 'Nouvelle demande';
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
+function statusIconClass(status: HolidayRequest['status']): string {
+  switch (status) {
+    case 'approved':
+      return 'bg-success/10';
+    case 'rejected':
+      return 'bg-destructive/10';
+    case 'pending':
+      return 'bg-warning/10';
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -27,22 +85,22 @@ export default function AdminDashboard() {
     }
   }, [isEmployee, navigate]);
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => listUsers(),
     enabled: isAdmin(),
   });
-  const { data: allRequests = [] } = useQuery({
+  const { data: allRequests = [], isLoading: requestsLoading } = useQuery({
     queryKey: ['leave-requests'],
     queryFn: () => listLeaveRequests(),
     enabled: isAdmin(),
   });
-  const { data: publicHolidays = [] } = useQuery({
+  const { data: publicHolidays = [], isLoading: holidaysLoading } = useQuery({
     queryKey: ['public-holidays'],
     queryFn: listPublicHolidays,
     enabled: isAdmin(),
   });
-  const { data: teamMembers = [] } = useQuery({
+  const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
     queryKey: ['team'],
     queryFn: listTeam,
     enabled: isAdmin(),
@@ -50,27 +108,51 @@ export default function AdminDashboard() {
 
   const employeeColorMap = useMemo(() => buildEmployeeColorMap(users), [users]);
 
+  const today = startOfLocalDay(new Date());
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const totalEmployees = users.filter((u) => u.role === 'employee').length;
+  const pendingApprovals = allRequests.filter((r) => r.status === 'pending');
+  const pendingRequests = pendingApprovals.length;
+  const employeesOnHoliday = teamMembers.filter((m) => m.isOnHoliday).length;
+
+  const decidedThisMonth = allRequests.filter((r) => {
+    if (r.status !== 'approved' && r.status !== 'rejected') {
+      return false;
+    }
+    const decidedAt = r.reviewedAt ?? r.createdAt;
+    return decidedAt >= monthStart;
+  });
+  const approvedThisMonth = decidedThisMonth.filter((r) => r.status === 'approved').length;
+  const approvalRateThisMonth =
+    decidedThisMonth.length > 0
+      ? Math.round((approvedThisMonth / decidedThisMonth.length) * 100)
+      : 0;
+
+  const upcomingHolidays = allRequests.filter((r) => {
+    if (r.status !== 'approved') {
+      return false;
+    }
+    const startDate = startOfLocalDay(r.startDate);
+    return startDate >= today && startDate <= nextWeek;
+  });
+
+  const recentActivity = useMemo(
+    () => [...allRequests].sort((a, b) => activityTimestamp(b) - activityTimestamp(a)).slice(0, 5),
+    [allRequests],
+  );
+
+  const isLoading = usersLoading || requestsLoading || holidaysLoading || teamLoading;
+
   if (!isAdmin()) {
     return null;
   }
 
-  const totalEmployees = users.filter(u => u.role === 'employee').length;
-  const pendingApprovals = allRequests.filter(r => r.status === 'pending');
-  const pendingRequests = pendingApprovals.length;
-  const approvedRequests = allRequests.filter(r => r.status === 'approved').length;
-  const employeesOnHoliday = teamMembers.filter(m => m.isOnHoliday).length;
-
-  const today = new Date();
-  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const upcomingHolidays = allRequests.filter(r => {
-    const startDate = new Date(r.startDate);
-    return startDate >= today && startDate <= nextWeek && r.status === 'approved';
-  });
-
   const stats = [
     {
       title: 'Total Employés',
-      value: totalEmployees,
+      value: isLoading ? '…' : totalEmployees,
       icon: Users,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
@@ -78,7 +160,7 @@ export default function AdminDashboard() {
     },
     {
       title: 'Demandes en attente',
-      value: pendingRequests,
+      value: isLoading ? '…' : pendingRequests,
       icon: Clock,
       color: 'text-warning',
       bgColor: 'bg-warning/10',
@@ -86,19 +168,22 @@ export default function AdminDashboard() {
     },
     {
       title: 'En congé',
-      value: employeesOnHoliday,
+      value: isLoading ? '…' : employeesOnHoliday,
       icon: Calendar,
       color: 'text-success',
       bgColor: 'bg-success/10',
       description: 'Actuellement en congé',
     },
     {
-      title: 'Taux d\'approbation',
-      value: `${Math.round((approvedRequests / allRequests.length) * 100) || 0}%`,
+      title: "Taux d'approbation",
+      value: isLoading ? '…' : `${approvalRateThisMonth}%`,
       icon: TrendingUp,
       color: 'text-chart-1',
       bgColor: 'bg-chart-1/10',
-      description: 'Ce mois',
+      description:
+        decidedThisMonth.length > 0
+          ? `${approvedThisMonth}/${decidedThisMonth.length} décisions ce mois`
+          : 'Aucune décision ce mois',
     },
   ];
 
@@ -138,8 +223,8 @@ export default function AdminDashboard() {
             publicHolidays={publicHolidays}
             employeeColorMap={employeeColorMap}
             employees={users
-              .filter((user) => user.role === 'employee')
-              .map((user) => ({ id: user.id, name: user.name }))}
+              .filter((entry) => entry.role === 'employee')
+              .map((entry) => ({ id: entry.id, name: entry.name }))}
           />
         </div>
 
@@ -158,7 +243,16 @@ export default function AdminDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {pendingApprovals.length > 0 ? (
+              {isLoading && (
+                <p className="text-sm text-muted-foreground text-center py-8">Chargement…</p>
+              )}
+              {!isLoading && pendingApprovals.length === 0 && (
+                <div className="text-center py-8">
+                  <CheckCircle className="w-12 h-12 text-success mx-auto mb-2 opacity-50" />
+                  <p className="text-sm text-muted-foreground">Aucune demande en attente</p>
+                </div>
+              )}
+              {!isLoading && pendingApprovals.length > 0 && (
                 <div className="space-y-3">
                   {pendingApprovals.slice(0, 5).map((request) => (
                     <div
@@ -171,7 +265,8 @@ export default function AdminDashboard() {
                           <Badge variant="pending">En attente</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(request.startDate), 'd MMM', { locale: fr })} - {format(new Date(request.endDate), 'd MMM yyyy', { locale: fr })}
+                          {format(request.startDate, 'd MMM', { locale: fr })} -{' '}
+                          {format(request.endDate, 'd MMM yyyy', { locale: fr })}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1 truncate">
                           {formatLeaveDuration(request.days, request.halfDayPeriod)} • {request.reason}
@@ -188,11 +283,6 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <CheckCircle className="w-12 h-12 text-success mx-auto mb-2 opacity-50" />
-                  <p className="text-sm text-muted-foreground">Aucune demande en attente</p>
-                </div>
               )}
             </CardContent>
           </Card>
@@ -203,7 +293,15 @@ export default function AdminDashboard() {
               <CardDescription>7 prochains jours</CardDescription>
             </CardHeader>
             <CardContent>
-              {upcomingHolidays.length > 0 ? (
+              {isLoading && (
+                <p className="text-sm text-muted-foreground text-center py-4">Chargement…</p>
+              )}
+              {!isLoading && upcomingHolidays.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Aucun congé prévu cette semaine
+                </p>
+              )}
+              {!isLoading && upcomingHolidays.length > 0 && (
                 <div className="space-y-3">
                   {upcomingHolidays.slice(0, 5).map((holiday) => (
                     <div
@@ -213,7 +311,8 @@ export default function AdminDashboard() {
                       <div className="min-w-0">
                         <p className="font-medium text-foreground text-sm truncate">{holiday.employeeName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(holiday.startDate), 'd MMM', { locale: fr })} - {format(new Date(holiday.endDate), 'd MMM', { locale: fr })}
+                          {format(holiday.startDate, 'd MMM', { locale: fr })} -{' '}
+                          {format(holiday.endDate, 'd MMM', { locale: fr })}
                         </p>
                       </div>
                       <Badge variant="outline" className="shrink-0">
@@ -222,10 +321,6 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Aucun congé prévu cette semaine
-                </p>
               )}
             </CardContent>
           </Card>
@@ -233,46 +328,52 @@ export default function AdminDashboard() {
           <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
             <CardHeader>
               <CardTitle>Activité récente</CardTitle>
-              <CardDescription>Dernières actions sur les demandes</CardDescription>
+              <CardDescription>Dernières demandes et décisions</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {allRequests.slice(0, 5).map((request) => (
-                  <div
-                    key={request.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border"
-                  >
-                    <div className={cn(
-                      'p-2 rounded-full',
-                      request.status === 'approved' ? 'bg-success/10' :
-                      request.status === 'rejected' ? 'bg-destructive/10' :
-                      'bg-warning/10'
-                    )}>
-                      {request.status === 'approved' ? (
-                        <CheckCircle className="w-4 h-4 text-success" />
-                      ) : request.status === 'rejected' ? (
-                        <XCircle className="w-4 h-4 text-destructive" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-warning" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {request.employeeName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {request.status === 'approved' ? 'Demande approuvée' :
-                         request.status === 'rejected' ? 'Demande rejetée' :
-                         'Nouvelle demande'} • {format(new Date(request.createdAt), 'd MMM yyyy', { locale: fr })}
-                      </p>
-                    </div>
-                    <Badge variant={request.status}>
-                      {request.status === 'pending' ? 'En attente' :
-                       request.status === 'approved' ? 'Approuvé' : 'Rejeté'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+              {isLoading && (
+                <p className="text-sm text-muted-foreground text-center py-4">Chargement…</p>
+              )}
+              {!isLoading && recentActivity.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Aucune activité récente
+                </p>
+              )}
+              {!isLoading && recentActivity.length > 0 && (
+                <div className="space-y-3">
+                  {recentActivity.map((request) => {
+                    const eventDate = request.reviewedAt ?? request.createdAt;
+                    return (
+                      <div
+                        key={request.id}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-border"
+                      >
+                        <div className={cn('p-2 rounded-full', statusIconClass(request.status))}>
+                          {request.status === 'approved' && (
+                            <CheckCircle className="w-4 h-4 text-success" />
+                          )}
+                          {request.status === 'rejected' && (
+                            <XCircle className="w-4 h-4 text-destructive" />
+                          )}
+                          {request.status === 'pending' && (
+                            <AlertCircle className="w-4 h-4 text-warning" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {request.employeeName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {statusActionLabel(request.status)} •{' '}
+                            {format(eventDate, 'd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                        <Badge variant={request.status}>{statusLabel(request.status)}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

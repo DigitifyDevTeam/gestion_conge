@@ -265,13 +265,14 @@ class MeView(APIView):
 
 
 class UserViewSet(viewsets.ModelViewSet):
+    """Full user directory (emails, roles, etc.) — admin only.
+
+    Employees use /me/ for self and /team/ for a reduced colleague view.
+    """
+
     queryset = User.objects.select_related('profile').order_by('first_name', 'last_name')
     serializer_class = UserSerializer
-
-    def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
-            return [IsAuthenticated()]
-        return [IsAdminRole()]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
         qs = super().get_queryset()

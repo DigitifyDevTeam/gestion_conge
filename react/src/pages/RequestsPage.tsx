@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -54,6 +55,7 @@ const typeLabels: Record<HolidayType, string> = {
 export default function RequestsPage() {
   const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [editingRequest, setEditingRequest] = useState<HolidayRequest | null>(null);
   const [deletingRequest, setDeletingRequest] = useState<HolidayRequest | null>(null);
@@ -61,6 +63,11 @@ export default function RequestsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | null>(null);
   const [comment, setComment] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('q') || '');
+  }, [searchParams]);
 
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['leave-requests'],
@@ -82,6 +89,17 @@ export default function RequestsPage() {
     if (pendingToReviewIds.has(request.id)) return false;
     if (statusFilter !== 'all' && request.status !== statusFilter) return false;
     if (typeFilter !== 'all' && request.type !== typeFilter) return false;
+    if (searchQuery) {
+      const needle = searchQuery.toLowerCase();
+      const haystack = [
+        request.employeeName,
+        typeLabels[request.type],
+        request.reason || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
     return true;
   });
 

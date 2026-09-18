@@ -5,22 +5,40 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Never reuse these — they lived in git and must not run in production.
+_INSECURE_SECRET_KEY_PLACEHOLDERS = frozenset({
+    '',
+    'django-insecure-1hu3o=x9lilysqv6&c60c$)-vd-#j*f#u*1q(5krnnkaf4y)0@',
+    'dev-only-change-me',
+    'change-me-generate-with-get_random_secret_key',
+    'replace-with-output-of-get_random_secret_key',
+})
 
-def _load_env_file() -> None:
-    """Load .env.local or .env.production based on .env.active (default: local)."""
+# Local-only fallback so a missing .env.local does not silently use a leaked key.
+_LOCAL_DEV_SECRET_KEY = 'django-insecure-local-only-not-for-production'
+
+
+def _resolve_app_env() -> str:
     active_file = BASE_DIR / '.env.active'
     default_env = 'local'
     if active_file.exists():
         app_env = active_file.read_text(encoding='utf-8').strip().lower() or default_env
     else:
         app_env = os.environ.get('APP_ENV', default_env).strip().lower()
-
     if app_env not in {'local', 'production'}:
-        app_env = default_env
+        return default_env
+    return app_env
+
+
+def _load_env_file() -> str:
+    """Load .env.local or .env.production based on .env.active (default: local)."""
+    app_env = _resolve_app_env()
+    os.environ.setdefault('APP_ENV', app_env)
 
     env_path = BASE_DIR / f'.env.{app_env}'
     if env_path.exists():
@@ -31,33 +49,62 @@ def _load_env_file() -> None:
         load_dotenv(BASE_DIR / f'.env.{app_env}.example')
 
     # Safety net: never keep a localhost frontend URL in production mode.
-    debug = os.environ.get('DJANGO_DEBUG', '1') == '1'
+    # Default DEBUG off — fail closed if the var is missing.
+    debug = os.environ.get('DJANGO_DEBUG', '0') == '1'
     frontend = os.environ.get('FRONTEND_URL', '')
     prod_env = BASE_DIR / '.env.production'
     if not debug and prod_env.exists() and 'localhost' in frontend:
         load_dotenv(prod_env, override=True)
 
+    return app_env
 
-_load_env_file()
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-1hu3o=x9lilysqv6&c60c$)-vd-#j*f#u*1q(5krnnkaf4y)0@',
-)
+def _resolve_secret_key(app_env: str) -> str:
+    secret = (os.environ.get('DJANGO_SECRET_KEY') or '').strip()
+    if app_env == 'local':
+        if not secret or secret in _INSECURE_SECRET_KEY_PLACEHOLDERS:
+            return _LOCAL_DEV_SECRET_KEY
+        return secret
 
-DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
+    if not secret or secret in _INSECURE_SECRET_KEY_PLACEHOLDERS:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY must be set to a unique, non-placeholder value in production. '
+            'Generate one with: python -c "from django.core.management.utils '
+            "import get_random_secret_key; print(get_random_secret_key())\""
+        )
+    if len(secret) < 50:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY is too short for production (minimum 50 characters).'
+        )
+    return secret
+
+
+APP_ENV = _load_env_file()
+
+SECRET_KEY = _resolve_secret_key(APP_ENV)
+
+# Fail closed: missing DJANGO_DEBUG means DEBUG=False.
+DEBUG = os.environ.get('DJANGO_DEBUG', '0') == '1'
+if APP_ENV == 'production' and DEBUG:
+    raise ImproperlyConfigured(
+        'DJANGO_DEBUG must be 0 when APP_ENV=production.'
+    )
 
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
 
-# Allow LAN access while developing / sharing with teammates
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
     if host.strip()
 ]
-if DEBUG:
+# Explicit opt-in for LAN/dev only — never auto-enable '*' via DEBUG.
+if (
+    APP_ENV == 'local'
+    and os.environ.get('DJANGO_ALLOW_ALL_HOSTS', '0') == '1'
+):
     ALLOWED_HOSTS = ['*']
-
+elif not ALLOWED_HOSTS:
+    raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS must list at least one host.')
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -148,8 +195,8 @@ CORS_ALLOWED_ORIGINS = [
 if FRONTEND_URL and FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
     CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
 
-# Teammates opening http://<lan-ip>:5173
-if DEBUG:
+# Teammates on LAN: set DJANGO_CORS_ALLOW_ALL=1 in .env.local only.
+if APP_ENV == 'local' and os.environ.get('DJANGO_CORS_ALLOW_ALL', '0') == '1':
     CORS_ALLOW_ALL_ORIGINS = True
 
 if not DEBUG:

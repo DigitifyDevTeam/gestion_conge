@@ -1,5 +1,6 @@
 import { User } from '@/types/auth';
-import { apiFetch, ApiError, setTokens, clearTokens } from './client';
+import { endClientSession, resetQueryCacheForNewSession } from '@/lib/session';
+import { apiFetch, ApiError, setTokens } from './client';
 
 interface TokenResponse {
   access: string;
@@ -33,6 +34,8 @@ export function mapUser(u: ApiUser): User {
 }
 
 function applySession(tokens: TokenResponse, user: User): User {
+  // Drop any previous user's cached queries before binding the new session.
+  resetQueryCacheForNewSession();
   setTokens(tokens.access, tokens.refresh);
   localStorage.setItem('user', JSON.stringify(user));
   return user;
@@ -168,5 +171,5 @@ export async function updateMe(payload: {
 }
 
 export function logoutRequest() {
-  clearTokens();
+  endClientSession();
 }
